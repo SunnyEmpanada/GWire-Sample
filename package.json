@@ -8,7 +8,7 @@
     "gwire/web"
   ],
   "scripts": {
-    "dev": "concurrently -k \"npm run dev -w gwire-server\" \"npm run dev -w gwire-web\"",
+    "dev": "concurrently -k \"PORT=3100 npm run dev -w gwire-server\" \"VITE_API_PROXY=http://127.0.0.1:3100 npm run dev -w gwire-web\"",
     "build": "npm run build -w gwire-web && npm run build -w gwire-server",
     "start": "npm run start -w gwire-server",
     "test": "npm run test -w gwire-server"

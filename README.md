@@ -13,8 +13,8 @@ npm install
 npm run dev
 ```
 
-- API: `http://localhost:3000` (same origin as the UI)
-- Portal: open the root URL in a browser
+- API: `http://localhost:3100` when using `npm run dev` (Vite proxies API calls from the portal)
+- Portal: Vite prints the URL (usually `http://localhost:5173`); open the root path in a browser
 
 ```bash
 npm run build
