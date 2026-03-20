@@ -191,7 +191,7 @@ export function App() {
       <header className="topbar">
         <div className="topbar-left">
           <span className="logo">GWire</span>
-          <span className="tagline">InsuranceNow API mockup</span>
+          <span className="tagline">Guidewire InsuranceNow API mockup</span>
         </div>
         <div className="topbar-search">
           <svg
@@ -224,16 +224,14 @@ export function App() {
             <button
               type="button"
               className={view === "summary" ? "nav-item active" : "nav-item"}
-              onClick={() => setView("summary")}
+              onClick={() => {
+                setView("summary");
+                setSelectedId(null);
+                setClaimDetailId(null);
+                setClaimDetail(null);
+              }}
             >
               Summary
-            </button>
-            <button
-              type="button"
-              className={view === "customers" ? "nav-item active" : "nav-item"}
-              onClick={() => setView("customers")}
-            >
-              Customers
             </button>
           </nav>
           <div className="sidebar-section-title">Customers</div>
@@ -244,7 +242,9 @@ export function App() {
                 <li key={c.systemId}>
                   <button
                     type="button"
-                    className={c.systemId === selectedId ? "row active" : "row"}
+                    className={
+                      view === "customers" && c.systemId === selectedId ? "row active" : "row"
+                    }
                     onClick={() => selectCustomer(c.systemId)}
                   >
                     <span className="name">{c.displayName}</span>
