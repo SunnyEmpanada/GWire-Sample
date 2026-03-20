@@ -29,6 +29,29 @@ test("GET unknown customer returns 404", async () => {
   await app.close();
 });
 
+test("GET /customers/:id/claims returns JSON list", async () => {
+  const app = await createApp();
+  const res = await app.inject({ method: "GET", url: "/customers/CUST-00001/claims" });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body) as { claims: { systemId: string }[] };
+  assert.ok(Array.isArray(body.claims));
+  assert.ok(body.claims.length >= 1);
+  await app.close();
+});
+
+test("GET /claims/:id/consumerSummary returns JSON", async () => {
+  const app = await createApp();
+  const res = await app.inject({
+    method: "GET",
+    url: "/claims/CLM-000001/consumerSummary",
+  });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body) as { claimNumber: string; paidAmount: number };
+  assert.ok(body.claimNumber.length > 0);
+  assert.ok(typeof body.paidAmount === "number");
+  await app.close();
+});
+
 test("GET /openWork uses openapi-sampler fallback", async () => {
   const app = await createApp();
   const res = await app.inject({ method: "GET", url: "/openWork" });
