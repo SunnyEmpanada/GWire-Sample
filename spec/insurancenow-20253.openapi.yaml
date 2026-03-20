@@ -581,6 +581,9 @@ components:
           $ref: "#/components/schemas/Address"
         accountNumber:
           type: string
+        openClaimCount:
+          type: integer
+          description: Mock extension — count of OPEN and PENDING claims for this customer
 
     Address:
       type: object

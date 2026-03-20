@@ -7,9 +7,11 @@ test("GET /customers returns JSON list", async () => {
   const res = await app.inject({ method: "GET", url: "/customers" });
   assert.equal(res.statusCode, 200);
   assert.match(res.headers["content-type"] ?? "", /application\/json/);
-  const body = JSON.parse(res.body) as { customers: unknown[] };
+  const body = JSON.parse(res.body) as { customers: { openClaimCount?: number }[] };
   assert.ok(Array.isArray(body.customers));
   assert.equal(body.customers.length, 100);
+  assert.ok(typeof body.customers[0]?.openClaimCount === "number");
+  assert.ok(body.customers[0]!.openClaimCount! >= 0);
   await app.close();
 });
 

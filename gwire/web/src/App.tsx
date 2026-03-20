@@ -12,6 +12,8 @@ type Customer = {
     postalCode: string;
   };
   accountNumber: string;
+  /** OPEN + PENDING claims (from list API) */
+  openClaimCount?: number;
 };
 
 type Policy = {
@@ -247,8 +249,15 @@ export function App() {
                     }
                     onClick={() => selectCustomer(c.systemId)}
                   >
-                    <span className="name">{c.displayName}</span>
-                    <span className="meta">{c.address.city}, CA</span>
+                    <span className="row-text">
+                      <span className="name">{c.displayName}</span>
+                      <span className="meta">{c.address.city}, CA</span>
+                    </span>
+                    {(c.openClaimCount ?? 0) > 0 && (
+                      <span className="pill pill--open row-open-pill" aria-label={`${c.openClaimCount} open claims`}>
+                        {c.openClaimCount}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

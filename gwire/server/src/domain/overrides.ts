@@ -67,8 +67,13 @@ export function handleOverride(
         1000,
         parseInt(String((req.query as { page_size?: string }).page_size ?? "100"), 10) || 100
       );
+      const customers = store.customers.slice(0, pageSize).map((c) => {
+        const cl = store.claimsByCustomerId.get(c.systemId) ?? [];
+        const openClaimCount = cl.filter((x) => x.status === "OPEN" || x.status === "PENDING").length;
+        return { ...c, openClaimCount };
+      });
       return {
-        customers: store.customers.slice(0, pageSize),
+        customers,
         nextPageToken: null,
       };
     }
