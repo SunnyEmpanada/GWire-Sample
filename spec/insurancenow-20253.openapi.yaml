@@ -525,6 +525,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecentlyViewed"
 
+  /stats/summary:
+    get:
+      tags: [Misc]
+      operationId: getStatsSummary
+      summary: Portfolio aggregates (mock)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioStatsSummary"
+
 components:
   schemas:
     CountryList:
@@ -864,3 +877,31 @@ components:
                 type: string
               systemId:
                 type: string
+
+    PortfolioStatsSummary:
+      type: object
+      properties:
+        claimCounts:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: OPEN + PENDING
+            closed:
+              type: integer
+            denied:
+              type: integer
+        totalPaidAllClaims:
+          type: number
+        totalOpenClaimsAmount:
+          type: number
+          description: Sum of paid + reserve on OPEN and PENDING claims
+        topCitiesByCustomers:
+          type: array
+          items:
+            type: object
+            properties:
+              city:
+                type: string
+              customerCount:
+                type: integer

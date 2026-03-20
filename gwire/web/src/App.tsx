@@ -42,6 +42,15 @@ type ClaimDetail = {
   reserveAmount: number;
 };
 
+type PortfolioStats = {
+  claimCounts: { open: number; closed: number; denied: number };
+  totalPaidAllClaims: number;
+  totalOpenClaimsAmount: number;
+  topCitiesByCustomers: { city: string; customerCount: number }[];
+};
+
+type MainView = "summary" | "customers";
+
 function claimPillClass(status: string): string {
   const s = status.toUpperCase();
   if (s === "OPEN") return "pill pill--open";
@@ -54,6 +63,7 @@ function claimPillClass(status: string): string {
 export function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
+  const [stats, setStats] = useState<PortfolioStats | null>(null);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [claims, setClaims] = useState<ClaimRow[]>([]);
@@ -61,12 +71,16 @@ export function App() {
   const [claimDetail, setClaimDetail] = useState<ClaimDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statsErr, setStatsErr] = useState<string | null>(null);
+  const [view, setView] = useState<MainView>("customers");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setLoading(true);
+        setErr(null);
+        setStatsErr(null);
         const [cRes, pRes] = await Promise.all([
           getJson<{ customers: Customer[] }>("/customers?page_size=100"),
           getJson<{ policies: Policy[] }>("/policies"),
@@ -74,6 +88,12 @@ export function App() {
         if (!cancelled) {
           setCustomers(cRes.customers);
           setPolicies(pRes.policies);
+        }
+        try {
+          const sRes = await getJson<PortfolioStats>("/stats/summary");
+          if (!cancelled) setStats(sRes);
+        } catch {
+          if (!cancelled) setStatsErr("Could not load portfolio summary.");
         }
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : "Load failed");
@@ -153,12 +173,25 @@ export function App() {
     [claims]
   );
 
+  const pageTitle = useMemo(() => {
+    if (view === "summary") return "Portfolio summary";
+    if (selected) return selected.displayName;
+    return "Customers";
+  }, [view, selected]);
+
+  const selectCustomer = (id: string) => {
+    setView("customers");
+    setSelectedId(id);
+    setClaimDetailId(null);
+    setClaimDetail(null);
+  };
+
   return (
     <div className="layout">
       <header className="topbar">
         <div className="topbar-left">
           <span className="logo">GWire</span>
-          <span className="tagline">Insurance mock</span>
+          <span className="tagline">InsuranceNow API mockup</span>
         </div>
         <div className="topbar-search">
           <svg
@@ -187,15 +220,20 @@ export function App() {
 
       <div className="shell">
         <aside className="sidebar">
-          <button type="button" className="btn-olive">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z" />
-            </svg>
-            Actions
-          </button>
           <nav className="side-nav" aria-label="Primary">
-            <button type="button" className="nav-item active">
+            <button
+              type="button"
+              className={view === "summary" ? "nav-item active" : "nav-item"}
+              onClick={() => setView("summary")}
+            >
               Summary
+            </button>
+            <button
+              type="button"
+              className={view === "customers" ? "nav-item active" : "nav-item"}
+              onClick={() => setView("customers")}
+            >
+              Customers
             </button>
           </nav>
           <div className="sidebar-section-title">Customers</div>
@@ -207,11 +245,7 @@ export function App() {
                   <button
                     type="button"
                     className={c.systemId === selectedId ? "row active" : "row"}
-                    onClick={() => {
-                      setSelectedId(c.systemId);
-                      setClaimDetailId(null);
-                      setClaimDetail(null);
-                    }}
+                    onClick={() => selectCustomer(c.systemId)}
                   >
                     <span className="name">{c.displayName}</span>
                     <span className="meta">{c.address.city}, CA</span>
@@ -225,124 +259,190 @@ export function App() {
         <main className="content">
           {err && <div className="banner error">{err}</div>}
 
-          <h1 className="page-title">My Summary</h1>
+          <h1 className="page-title">{pageTitle}</h1>
 
-          {selected && (
-            <div className="grid" style={{ marginBottom: "1rem" }}>
-              <section className="panel">
-                <h2>Overview</h2>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-                    gap: "0.75rem",
-                    textAlign: "center",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{customerPolicies.length}</div>
-                    <div className="muted small">Policies</div>
+          {view === "summary" && (
+            <div className="summary-screen">
+              {statsErr && <div className="banner error">{statsErr}</div>}
+              {!stats && !statsErr && loading && (
+                <p className="muted">Loading portfolio stats…</p>
+              )}
+              {stats && (
+                <>
+                  <div className="grid summary-grid">
+                    <section className="panel">
+                      <h2>Claims by status</h2>
+                      <p className="muted small" style={{ marginTop: 0 }}>
+                        Open includes OPEN and PENDING claims.
+                      </p>
+                      <div className="stat-row">
+                        <div className="stat-block">
+                          <div className="stat-value">{stats.claimCounts.open}</div>
+                          <div className="stat-label">Open</div>
+                        </div>
+                        <div className="stat-block">
+                          <div className="stat-value">{stats.claimCounts.closed}</div>
+                          <div className="stat-label">Closed</div>
+                        </div>
+                        <div className="stat-block">
+                          <div className="stat-value">{stats.claimCounts.denied}</div>
+                          <div className="stat-label">Denied</div>
+                        </div>
+                      </div>
+                    </section>
+                    <section className="panel">
+                      <h2>Amounts</h2>
+                      <dl className="dl summary-dl">
+                        <dt>Total paid (all claims)</dt>
+                        <dd>${stats.totalPaidAllClaims.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
+                        <dt>Total on open claims</dt>
+                        <dd>
+                          $
+                          {stats.totalOpenClaimsAmount.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          <span className="muted small">(paid + reserve, OPEN / PENDING)</span>
+                        </dd>
+                      </dl>
+                    </section>
                   </div>
-                  <div>
-                    <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{claims.length}</div>
-                    <div className="muted small">Claims</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{openClaims}</div>
-                    <div className="muted small">Open</div>
-                    <div style={{ marginTop: "0.35rem" }}>
-                      <span
-                        className="pill"
-                        style={{
-                          background: openClaims > 0 ? "var(--status-warn-bg)" : "var(--status-ok-bg)",
-                          color: openClaims > 0 ? "#a04000" : "#1e6091",
-                        }}
-                      >
-                        {openClaims} open
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </section>
+                  <section className="panel">
+                    <h2>Top 5 cities by customers</h2>
+                    <ol className="top-cities">
+                      {stats.topCitiesByCustomers.map((row) => (
+                        <li key={row.city}>
+                          <span className="top-cities-name">{row.city}</span>
+                          <span className="top-cities-count">{row.customerCount} customers</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                </>
+              )}
             </div>
           )}
 
-          <div className="grid">
-            <section className="panel detail">
-              {!selected && (
-                <p className="muted">Select a customer to view policies and claims.</p>
-              )}
+          {view === "customers" && (
+            <>
               {selected && (
-                <>
-                  <h2>Account</h2>
-                  <dl className="dl">
-                    <dt>ID</dt>
-                    <dd>{selected.systemId}</dd>
-                    <dt>Email</dt>
-                    <dd>{selected.primaryEmail}</dd>
-                    <dt>Phone</dt>
-                    <dd>{selected.primaryPhone}</dd>
-                    <dt>Account</dt>
-                    <dd>{selected.accountNumber}</dd>
-                  </dl>
-
-                  <h3>Policies</h3>
-                  <ul className="cards">
-                    {customerPolicies.map((p) => (
-                      <li key={p.systemId} className="card">
-                        <div className="card-title">{p.policyNumber}</div>
-                        <div className="card-body">
-                          <span className="pill pill--line">{p.lineCd}</span>
-                          <span>{p.status}</span>
+                <div className="grid" style={{ marginBottom: "1rem" }}>
+                  <section className="panel">
+                    <h2>Overview</h2>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
+                        gap: "0.75rem",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{customerPolicies.length}</div>
+                        <div className="muted small">Policies</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{claims.length}</div>
+                        <div className="muted small">Claims</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{openClaims}</div>
+                        <div className="muted small">Open</div>
+                        <div style={{ marginTop: "0.35rem" }}>
+                          <span
+                            className="pill"
+                            style={{
+                              background: openClaims > 0 ? "var(--status-warn-bg)" : "var(--status-ok-bg)",
+                              color: openClaims > 0 ? "#a04000" : "#1e6091",
+                            }}
+                          >
+                            {openClaims} open
+                          </span>
                         </div>
-                        <div className="muted small">
-                          {p.effectiveDt} → {p.expirationDt}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <h3>Claims</h3>
-                  {claims.length === 0 && (
-                    <p className="muted">No claims on file for this customer.</p>
-                  )}
-                  <ul className="claims">
-                    {claims.map((cl) => (
-                      <li key={cl.systemId}>
-                        <button
-                          type="button"
-                          className={cl.systemId === claimDetailId ? "claim open" : "claim"}
-                          onClick={() => void loadClaimDetail(cl.systemId)}
-                        >
-                          <span className="claim-num">{cl.claimNumber}</span>
-                          <span className={claimPillClass(cl.status)}>{cl.status}</span>
-                          <span className="muted">{cl.lossType}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {claimDetail && claimDetailId && (
-                    <div className="claim-detail">
-                      <h4>Claim detail</h4>
-                      <dl className="dl">
-                        <dt>Number</dt>
-                        <dd>{claimDetail.claimNumber}</dd>
-                        <dt>Status</dt>
-                        <dd>{claimDetail.status}</dd>
-                        <dt>Description</dt>
-                        <dd>{claimDetail.lossDescription}</dd>
-                        <dt>Paid</dt>
-                        <dd>${claimDetail.paidAmount.toFixed(2)}</dd>
-                        <dt>Reserve</dt>
-                        <dd>${claimDetail.reserveAmount.toFixed(2)}</dd>
-                      </dl>
+                      </div>
                     </div>
-                  )}
-                </>
+                  </section>
+                </div>
               )}
-            </section>
-          </div>
+
+              <div className="grid">
+                <section className="panel detail">
+                  {!selected && (
+                    <p className="muted">Select a customer to view policies and claims.</p>
+                  )}
+                  {selected && (
+                    <>
+                      <h2>Account</h2>
+                      <dl className="dl">
+                        <dt>ID</dt>
+                        <dd>{selected.systemId}</dd>
+                        <dt>Email</dt>
+                        <dd>{selected.primaryEmail}</dd>
+                        <dt>Phone</dt>
+                        <dd>{selected.primaryPhone}</dd>
+                        <dt>Account</dt>
+                        <dd>{selected.accountNumber}</dd>
+                      </dl>
+
+                      <h3>Policies</h3>
+                      <ul className="cards">
+                        {customerPolicies.map((p) => (
+                          <li key={p.systemId} className="card">
+                            <div className="card-title">{p.policyNumber}</div>
+                            <div className="card-body">
+                              <span className="pill pill--line">{p.lineCd}</span>
+                              <span>{p.status}</span>
+                            </div>
+                            <div className="muted small">
+                              {p.effectiveDt} → {p.expirationDt}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <h3>Claims</h3>
+                      {claims.length === 0 && (
+                        <p className="muted">No claims on file for this customer.</p>
+                      )}
+                      <ul className="claims">
+                        {claims.map((cl) => (
+                          <li key={cl.systemId}>
+                            <button
+                              type="button"
+                              className={cl.systemId === claimDetailId ? "claim open" : "claim"}
+                              onClick={() => void loadClaimDetail(cl.systemId)}
+                            >
+                              <span className="claim-num">{cl.claimNumber}</span>
+                              <span className={claimPillClass(cl.status)}>{cl.status}</span>
+                              <span className="muted">{cl.lossType}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {claimDetail && claimDetailId && (
+                        <div className="claim-detail">
+                          <h4>Claim detail</h4>
+                          <dl className="dl">
+                            <dt>Number</dt>
+                            <dd>{claimDetail.claimNumber}</dd>
+                            <dt>Status</dt>
+                            <dd>{claimDetail.status}</dd>
+                            <dt>Description</dt>
+                            <dd>{claimDetail.lossDescription}</dd>
+                            <dt>Paid</dt>
+                            <dd>${claimDetail.paidAmount.toFixed(2)}</dd>
+                            <dt>Reserve</dt>
+                            <dd>${claimDetail.reserveAmount.toFixed(2)}</dd>
+                          </dl>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>

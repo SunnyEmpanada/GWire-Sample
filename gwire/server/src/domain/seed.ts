@@ -110,8 +110,8 @@ export function buildMockStore(seed = 42): MockStore {
       productCd: lineCd === "HOME" ? "HO3-CA" : "PAP-CA",
       lineCd,
       status: "IN_FORCE",
-      effectiveDt: "2024-01-15",
-      expirationDt: "2025-01-15",
+      effectiveDt: "2025-06-01",
+      expirationDt: "2027-06-01",
       customerSystemId: systemId,
     };
     policies.push(pol);

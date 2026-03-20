@@ -6,9 +6,6 @@
   --logo-blue: #3498db;
   --link-blue: #3498db;
   --link-blue-hover: #2980b9;
-  --olive: #76923c;
-  --olive-hover: #8fb052;
-  --olive-pressed: #5f752f;
   --page-bg: #e8e9eb;
   --card-bg: #ffffff;
   --border: #d5d8dc;
@@ -123,33 +120,8 @@ body {
   color: var(--text-inverse);
   display: flex;
   flex-direction: column;
-  padding: 1rem 0.75rem;
-  gap: 0.75rem;
-}
-
-.btn-olive {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: none;
-  border-radius: var(--radius);
-  background: var(--olive);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
-}
-
-.btn-olive:hover {
-  background: var(--olive-hover);
-}
-
-.btn-olive:active {
-  background: var(--olive-pressed);
+  padding: 0.5rem 0.75rem 1rem;
+  gap: 0.65rem;
 }
 
 .side-nav {
@@ -288,6 +260,81 @@ body {
   .grid .panel.detail {
     grid-column: 1 / -1;
   }
+
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.summary-screen {
+  max-width: 960px;
+}
+
+.summary-grid .panel {
+  min-height: 100%;
+}
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.stat-block {
+  flex: 1;
+  min-width: 5rem;
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 300;
+  color: var(--text);
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.summary-dl dt {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.summary-dl dd {
+  margin-bottom: 0.5rem;
+}
+
+.top-cities {
+  margin: 0.5rem 0 0;
+  padding-left: 1.35rem;
+}
+
+.top-cities li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.top-cities li:last-child {
+  border-bottom: none;
+}
+
+.top-cities-name {
+  font-weight: 600;
+}
+
+.top-cities-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .panel {

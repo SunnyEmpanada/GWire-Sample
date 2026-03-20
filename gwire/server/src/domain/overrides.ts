@@ -10,6 +10,47 @@ export function handleOverride(
   operation: OpenAPI.Operation
 ): unknown | null | undefined {
   switch (operationId) {
+    case "getStatsSummary": {
+      const byCity = new Map<string, number>();
+      for (const c of store.customers) {
+        const city = c.address.city;
+        byCity.set(city, (byCity.get(city) ?? 0) + 1);
+      }
+      const topCitiesByCustomers = [...byCity.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([city, customerCount]) => ({ city, customerCount }));
+
+      let open = 0;
+      let closed = 0;
+      let denied = 0;
+      let totalPaidAllClaims = 0;
+      let totalOpenClaimsAmount = 0;
+
+      for (const cl of store.claims) {
+        totalPaidAllClaims += cl.paidAmount;
+        const s = cl.status;
+        if (s === "OPEN" || s === "PENDING") {
+          open += 1;
+          totalOpenClaimsAmount += cl.paidAmount + cl.reserveAmount;
+        } else if (s === "CLOSED") {
+          closed += 1;
+        } else if (s === "DENIED") {
+          denied += 1;
+        }
+      }
+
+      return {
+        claimCounts: {
+          open,
+          closed,
+          denied,
+        },
+        totalPaidAllClaims,
+        totalOpenClaimsAmount,
+        topCitiesByCustomers,
+      };
+    }
     case "listCountries":
       return {
         countries: [{ isoCd: "US", name: "United States" }],

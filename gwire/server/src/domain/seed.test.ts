@@ -14,4 +14,11 @@ test("seed has 100 California customers and 50/50 home vs auto", () => {
     assert.equal(c.address.stateProvCd, "CA");
     assert.equal(c.address.countryCd, "US");
   }
+  for (const p of s.policies) {
+    assert.equal(p.status, "IN_FORCE");
+    assert.ok(
+      p.expirationDt > "2026-04-01",
+      "IN_FORCE policies should expire after April 2026"
+    );
+  }
 });

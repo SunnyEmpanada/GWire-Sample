@@ -52,6 +52,21 @@ test("GET /claims/:id/consumerSummary returns JSON", async () => {
   await app.close();
 });
 
+test("GET /stats/summary returns aggregates", async () => {
+  const app = await createApp();
+  const res = await app.inject({ method: "GET", url: "/stats/summary" });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body) as {
+    claimCounts: { open: number; closed: number; denied: number };
+    totalPaidAllClaims: number;
+    topCitiesByCustomers: { city: string; customerCount: number }[];
+  };
+  assert.ok(body.claimCounts.open >= 0);
+  assert.ok(Array.isArray(body.topCitiesByCustomers));
+  assert.equal(body.topCitiesByCustomers.length, 5);
+  await app.close();
+});
+
 test("GET /openWork uses openapi-sampler fallback", async () => {
   const app = await createApp();
   const res = await app.inject({ method: "GET", url: "/openWork" });
