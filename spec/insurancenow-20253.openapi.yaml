@@ -1,0 +1,866 @@
+openapi: 3.0.3
+info:
+  title: InsuranceNow API (GWire mock subset aligned with 2025.3)
+  description: >
+    Representative GET surface for GWire mock server. Replace with the official
+    Guidewire export when available; redistribution may be restricted by license.
+  version: "2025.3.0"
+servers:
+  - url: /
+tags:
+  - name: Addresses
+  - name: Customers
+  - name: Policies
+  - name: Claims
+  - name: Applications
+  - name: Search
+  - name: Products
+  - name: Billing
+  - name: Tasks
+  - name: CodeRefs
+  - name: Misc
+
+paths:
+  /addresses/countries:
+    get:
+      tags: [Addresses]
+      operationId: listCountries
+      summary: List countries
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountryList"
+              example:
+                countries:
+                  - isoCd: US
+                    name: United States
+
+  /addresses/countries/{isoCd}:
+    get:
+      tags: [Addresses]
+      operationId: getCountry
+      parameters:
+        - name: isoCd
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Country"
+        "404":
+          description: Not found
+
+  /customers:
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      summary: List customers
+      parameters:
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: page_token
+          in: query
+          schema:
+            type: string
+        - name: filter
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerListPage"
+
+  /customers/{systemId}:
+    get:
+      tags: [Customers]
+      operationId: getCustomer
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Not found
+
+  /customers/{systemId}/summary:
+    get:
+      tags: [Customers]
+      operationId: getCustomerSummary
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSummary"
+
+  /customers/{systemId}/claims:
+    get:
+      tags: [Customers]
+      operationId: listCustomerClaims
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimSummaryList"
+
+  /policies:
+    get:
+      tags: [Policies]
+      operationId: listPolicies
+      parameters:
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+        - name: filter
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyListPage"
+
+  /policies/{systemId}:
+    get:
+      tags: [Policies]
+      operationId: getPolicy
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "404":
+          description: Not found
+
+  /policies/{systemId}/full:
+    get:
+      tags: [Policies]
+      operationId: getPolicyFull
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyFull"
+
+  /policies/{systemId}/insuredPolicyDetails:
+    get:
+      tags: [Policies]
+      operationId: getInsuredPolicyDetails
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsuredPolicyDetails"
+
+  /policies/{systemId}/documents:
+    get:
+      tags: [Policies]
+      operationId: listPolicyDocuments
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+
+  /policies/{systemId}/insuredDocuments:
+    get:
+      tags: [Policies]
+      operationId: listInsuredDocuments
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+
+  /policies/{systemId}/lines/{lineCd}:
+    get:
+      tags: [Policies]
+      operationId: getPolicyLine
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lineCd
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyLine"
+
+  /claims/{systemId}/consumerSummary:
+    get:
+      tags: [Claims]
+      operationId: getClaimConsumerSummary
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimConsumerSummary"
+
+  /claims/{systemId}/documents:
+    get:
+      tags: [Claims]
+      operationId: listClaimDocuments
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+
+  /search:
+    get:
+      tags: [Search]
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: resourceType
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+
+  /search/{resourceName}/{systemId}:
+    get:
+      tags: [Search]
+      operationId: searchByResource
+      parameters:
+        - name: resourceName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchHit"
+
+  /applications/{systemId}:
+    get:
+      tags: [Applications]
+      operationId: getApplication
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationStub"
+
+  /applications/{systemId}/full:
+    get:
+      tags: [Applications]
+      operationId: getApplicationFull
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationFull"
+
+  /products:
+    get:
+      tags: [Products]
+      operationId: listProducts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductList"
+
+  /billingAccounts:
+    get:
+      tags: [Billing]
+      operationId: listBillingAccounts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccountList"
+
+  /billingAccounts/{systemId}:
+    get:
+      tags: [Billing]
+      operationId: getBillingAccount
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAccount"
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      operationId: listTasks
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskList"
+
+  /tasks/{systemId}:
+    get:
+      tags: [Tasks]
+      operationId: getTask
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /coderefs:
+    get:
+      tags: [CodeRefs]
+      operationId: listCoderefs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeRefList"
+
+  /users:
+    get:
+      tags: [Misc]
+      operationId: listUsers
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+
+  /providers:
+    get:
+      tags: [Misc]
+      operationId: listProviders
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderList"
+
+  /openWork:
+    get:
+      tags: [Misc]
+      operationId: getOpenWork
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenWorkQueue"
+
+  /recentlyViewed:
+    get:
+      tags: [Misc]
+      operationId: getRecentlyViewed
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentlyViewed"
+
+components:
+  schemas:
+    CountryList:
+      type: object
+      properties:
+        countries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Country"
+    Country:
+      type: object
+      properties:
+        isoCd:
+          type: string
+        name:
+          type: string
+
+    CustomerListPage:
+      type: object
+      properties:
+        customers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Customer"
+        nextPageToken:
+          type: string
+          nullable: true
+
+    Customer:
+      type: object
+      properties:
+        systemId:
+          type: string
+        displayName:
+          type: string
+        primaryEmail:
+          type: string
+        primaryPhone:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        accountNumber:
+          type: string
+
+    Address:
+      type: object
+      properties:
+        addressLine1:
+          type: string
+        city:
+          type: string
+        stateProvCd:
+          type: string
+        postalCode:
+          type: string
+        countryCd:
+          type: string
+
+    CustomerSummary:
+      type: object
+      properties:
+        systemId:
+          type: string
+        displayName:
+          type: string
+        policyCount:
+          type: integer
+        openClaimCount:
+          type: integer
+
+    ClaimSummaryList:
+      type: object
+      properties:
+        claims:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaimSummary"
+
+    ClaimSummary:
+      type: object
+      properties:
+        systemId:
+          type: string
+        claimNumber:
+          type: string
+        status:
+          type: string
+        lossDt:
+          type: string
+          format: date
+        lossType:
+          type: string
+        policySystemId:
+          type: string
+
+    PolicyListPage:
+      type: object
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Policy"
+        nextPageToken:
+          type: string
+          nullable: true
+
+    Policy:
+      type: object
+      properties:
+        systemId:
+          type: string
+        policyNumber:
+          type: string
+        productCd:
+          type: string
+        lineCd:
+          type: string
+        status:
+          type: string
+        effectiveDt:
+          type: string
+          format: date
+        expirationDt:
+          type: string
+          format: date
+        customerSystemId:
+          type: string
+
+    PolicyFull:
+      allOf:
+        - $ref: "#/components/schemas/Policy"
+        - type: object
+          properties:
+            coverages:
+              type: array
+              items:
+                type: object
+                properties:
+                  coverageCd:
+                    type: string
+                  limitAmount:
+                    type: number
+            risks:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+
+    InsuredPolicyDetails:
+      type: object
+      properties:
+        systemId:
+          type: string
+        policyNumber:
+          type: string
+        lineCd:
+          type: string
+        namedInsured:
+          type: string
+
+    PolicyLine:
+      type: object
+      properties:
+        lineCd:
+          type: string
+        description:
+          type: string
+
+    DocumentList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId:
+                type: string
+              title:
+                type: string
+
+    ClaimConsumerSummary:
+      type: object
+      properties:
+        systemId:
+          type: string
+        claimNumber:
+          type: string
+        status:
+          type: string
+        lossDescription:
+          type: string
+        paidAmount:
+          type: number
+        reserveAmount:
+          type: number
+
+    SearchResults:
+      type: object
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+
+    SearchHit:
+      type: object
+      properties:
+        resourceName:
+          type: string
+        systemId:
+          type: string
+        title:
+          type: string
+
+    ApplicationStub:
+      type: object
+      properties:
+        systemId:
+          type: string
+        status:
+          type: string
+
+    ApplicationFull:
+      type: object
+      properties:
+        systemId:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    ProductList:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              productVersionId:
+                type: string
+              name:
+                type: string
+
+    BillingAccountList:
+      type: object
+      properties:
+        billingAccounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingAccount"
+
+    BillingAccount:
+      type: object
+      properties:
+        systemId:
+          type: string
+        accountNumber:
+          type: string
+        balance:
+          type: number
+
+    TaskList:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+
+    Task:
+      type: object
+      properties:
+        systemId:
+          type: string
+        subject:
+          type: string
+        status:
+          type: string
+
+    CodeRefList:
+      type: object
+      properties:
+        packages:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    UserList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              loginId:
+                type: string
+              displayName:
+                type: string
+
+    ProviderList:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              systemId:
+                type: string
+              name:
+                type: string
+
+    OpenWorkQueue:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    RecentlyViewed:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              resourceName:
+                type: string
+              systemId:
+                type: string
