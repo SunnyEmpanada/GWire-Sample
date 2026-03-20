@@ -52,9 +52,11 @@ Use any Node 20 host or container platform (Fly.io, Render, Azure App Service, e
 
 Vercel runs **serverless functions** or **static assets**, not a long-running Node process like `npm start` unless you use [Docker on Vercel](https://vercel.com/docs/deployments/docker) or a compatible adapter.
 
-- **`FUNCTION_INVOCATION_FAILED` ([docs](https://vercel.com/docs/errors/FUNCTION_INVOCATION_FAILED))** means a serverless function **crashed** during invocation (e.g. uncaught exception, missing files, timeout). Check **Vercel → Project → Logs** for the real stack trace (often `ENOENT` for the OpenAPI file before this fix).
-- This repo’s server loads `spec/insurancenow-20253.openapi.yaml` at startup. The server build runs `scripts/copy-spec.mjs` so `dist/spec/` ships with the compiled app—required when the deployment bundle does not include the whole monorepo.
-- **Practical options:** (1) Deploy the **static UI** only (`gwire/web` build output) and host the API on Render/Fly/Docker; point the UI at that API via env/proxy. (2) Run the **full Fastify app** in **Docker** on a platform that supports containers. (3) Add a Vercel serverless wrapper (e.g. Fastify + AWS Lambda adapter) and ensure the build output includes `dist/spec`—see logs if invocation still fails.
+This repo includes **[`vercel.json`](vercel.json)** and **[`api/`](api/)** so deployments use a **default-export handler** (`serverless-http` + Fastify). **Project → Settings → Root Directory** must be the **repository root** (`.`). If Root Directory is set to `gwire/server`, Vercel may treat `src/app.ts` as a serverless entry: it has **no default export**, which triggers **“Invalid export … The default export must be a function or server”** and a failed invocation.
+
+- **`FUNCTION_INVOCATION_FAILED` ([docs](https://vercel.com/docs/errors/FUNCTION_INVOCATION_FAILED))** means the function **crashed** (uncaught exception, missing files, timeout). Check **Logs** for the real error (e.g. `ENOENT` for the OpenAPI spec).
+- The server build copies `spec/` into `gwire/server/dist/spec` (`copy-spec.mjs`); `vercel.json` **includeFiles** ensures that folder is bundled with `api/**/*.ts`.
+- **Alternatives:** static UI only + API on Render/Fly/Docker; or full app in a **Docker** deployment on Vercel.
 
 ## License
 
