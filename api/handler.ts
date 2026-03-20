@@ -1,16 +1,19 @@
 /**
- * Shared Vercel serverless handler: wraps Fastify with serverless-http.
- * Strips /api prefix so OpenAPI routes (/customers, …) match.
+ * Shared Vercel serverless handler: forwards Node `req` into Fastify via `inject()`.
  *
- * Vercel compiles `api/*.ts` to CommonJS; `gwire/server/dist/app.js` is ESM.
- * A static `import` becomes `require()` and throws ERR_REQUIRE_ESM — use dynamic `import()`.
+ * `serverless-http` defaults to the AWS Lambda adapter, which expects an API Gateway
+ * *event*, not an `IncomingMessage`. Passing Vercel's `(req, res)` makes the path fall
+ * back to `/`, so `/customers` never matches and responses can hang.
+ *
+ * Vercel compiles `api/*.ts` to CommonJS; `gwire/server/dist/app.js` is ESM — use
+ * dynamic `import()` for `createApp`.
  */
+import type { FastifyInstance } from "fastify";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import serverless from "serverless-http";
 
 type Req = IncomingMessage & { url?: string };
 
-let cached: ReturnType<typeof serverless> | undefined;
+let cached: FastifyInstance | undefined;
 let initPromise: Promise<void> | null = null;
 
 function stripApiPrefix(req: Req) {
@@ -25,21 +28,39 @@ function stripApiPrefix(req: Req) {
   req.url = search ? `${normalized}${search}` : normalized;
 }
 
-async function ensureHandler() {
-  if (cached) return;
+async function ensureApp(): Promise<FastifyInstance> {
+  if (cached) return cached;
   if (!initPromise) {
     initPromise = (async () => {
       const { createApp } = await import("../gwire/server/dist/app.js");
       const app = await createApp();
       await app.ready();
-      cached = serverless(app as Parameters<typeof serverless>[0]);
+      cached = app;
     })();
   }
   await initPromise;
+  return cached!;
 }
 
 export default async function vercelHandler(req: Req, res: ServerResponse) {
   stripApiPrefix(req);
-  await ensureHandler();
-  return cached!(req, res);
+  const app = await ensureApp();
+
+  const url = req.url || "/";
+  const response = await app.inject({
+    method: req.method ?? "GET",
+    url,
+    headers: req.headers as Record<string, string | string[] | undefined>,
+  });
+
+  res.statusCode = response.statusCode;
+  for (const [key, value] of Object.entries(response.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const v of value) res.appendHeader(key, v);
+    } else {
+      res.setHeader(key, value);
+    }
+  }
+  res.end(response.rawPayload);
 }

@@ -54,7 +54,7 @@ The build log may show **warnings** that are not failures if you see **Build Com
 
 Vercel runs **serverless functions** or **static assets**, not a long-running Node process like `npm start` unless you use [Docker on Vercel](https://vercel.com/docs/deployments/docker) or a compatible adapter.
 
-This repo includes **[`vercel.json`](vercel.json)** and **[`api/`](api/)** so deployments use a **default-export handler** (`serverless-http` + Fastify). **Project → Settings → Root Directory** must be the **repository root** (`.`). If Root Directory is set to `gwire/server`, Vercel may treat `src/app.ts` as a serverless entry: it has **no default export**, which triggers **“Invalid export … The default export must be a function or server”** and a failed invocation.
+This repo includes **[`vercel.json`](vercel.json)** and **[`api/`](api/)** so deployments use a **default-export handler** that forwards each request into Fastify with **`app.inject()`** (Vercel passes Node `IncomingMessage`/`ServerResponse`, not a Lambda event — adapters like `serverless-http`’s default AWS mode can mis-read the URL as `/` and break routing). **Project → Settings → Root Directory** must be the **repository root** (`.`). If Root Directory is set to `gwire/server`, Vercel may treat `src/app.ts` as a serverless entry: it has **no default export**, which triggers **“Invalid export … The default export must be a function or server”** and a failed invocation.
 
 The API handler uses **`import()`** (dynamic) to load `gwire/server/dist/app.js` because Vercel’s Node builder often emits **CommonJS** for `api/*.ts`, while the server package is **ESM** — a static import becomes `require()` and fails at runtime with **`ERR_REQUIRE_ESM`**.
 
