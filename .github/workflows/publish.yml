@@ -1,0 +1,74 @@
+name: Publish
+
+on:
+  release:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  trigger-kognitos-node:
+    name: Trigger kognitos-node build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SEMVER_APP_ID }}
+          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+          owner: kognitos
+          repositories: kognitos-node
+
+      - name: Trigger kognitos-node workflow
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OPENAPI_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          curl --fail-with-body \
+            -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/kognitos/kognitos-node/dispatches \
+            --data "{\"event_type\":\"openapi-updated\",\"client_payload\":{\"openapi_version\":\"$OPENAPI_VERSION\"}}"
+
+  trigger-docs-agent:
+    name: Notify docs agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SEMVER_APP_ID }}
+          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+          owner: kognitos
+          repositories: gitbook-agent
+
+      - name: Dispatch to docs agent
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ github.event.release.tag_name }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          jq -n \
+            --arg version "$VERSION" \
+            --arg changelog "$BODY" \
+            --arg release_url "https://github.com/kognitos/openapi/releases/tag/$VERSION" \
+            '{
+              event_type: "openapi-release",
+              client_payload: {
+                version: $version,
+                changelog: $changelog,
+                release_url: $release_url
+              }
+            }' > /tmp/dispatch.json
+
+          curl --fail-with-body \
+            -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/kognitos/gitbook-agent/dispatches \
+            --data @/tmp/dispatch.json

@@ -1,0 +1,15 @@
+extends:
+  - spectral:oas
+
+rules:
+  # Require operation descriptions
+  operation-description: warn
+
+  # Require operation IDs
+  operation-operationId: error
+
+  # Require info contact
+  info-contact: off
+
+  # Require info license
+  info-license: off
