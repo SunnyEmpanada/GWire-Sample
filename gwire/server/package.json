@@ -1,0 +1,25 @@
+{
+  "name": "gwire-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "node --import tsx --test src/app.test.ts src/domain/seed.test.ts"
+  },
+  "dependencies": {
+    "@apidevtools/swagger-parser": "^10.1.0",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/static": "^8.0.4",
+    "fastify": "^5.2.1",
+    "openapi-sampler": "^1.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "openapi-types": "^12.1.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

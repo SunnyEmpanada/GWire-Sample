@@ -1,0 +1,22 @@
+{
+  "name": "gwire",
+  "private": true,
+  "version": "1.0.0",
+  "description": "GWire — InsuranceNow-style mock (spec-driven)",
+  "workspaces": [
+    "gwire/server",
+    "gwire/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev -w gwire-server\" \"npm run dev -w gwire-web\"",
+    "build": "npm run build -w gwire-web && npm run build -w gwire-server",
+    "start": "npm run start -w gwire-server",
+    "test": "npm run test -w gwire-server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
