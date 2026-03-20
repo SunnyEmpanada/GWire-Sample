@@ -88,7 +88,12 @@ export function App() {
           getJson<{ policies: Policy[] }>("/policies"),
         ]);
         if (!cancelled) {
-          setCustomers(cRes.customers);
+          setCustomers(
+            cRes.customers.map((c) => ({
+              ...c,
+              openClaimCount: Math.max(0, Math.floor(Number(c.openClaimCount ?? 0))),
+            }))
+          );
           setPolicies(pRes.policies);
         }
         try {
@@ -254,7 +259,10 @@ export function App() {
                       <span className="meta">{c.address.city}, CA</span>
                     </span>
                     {(c.openClaimCount ?? 0) > 0 && (
-                      <span className="pill pill--open row-open-pill" aria-label={`${c.openClaimCount} open claims`}>
+                      <span
+                        className="row-open-pill row-open-pill--has"
+                        aria-label={`${c.openClaimCount} open claims`}
+                      >
                         {c.openClaimCount}
                       </span>
                     )}
