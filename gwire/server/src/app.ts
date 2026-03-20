@@ -11,9 +11,44 @@ import { buildMockStore } from "./domain/seed.js";
 import { handleOverride } from "./domain/overrides.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Monorepo root (works when running from src/ or dist/ with full repo present). */
 export const repoRoot = path.resolve(__dirname, "../../..");
-export const specPath = path.join(repoRoot, "spec/insurancenow-20253.openapi.yaml");
-export const webDist = path.join(repoRoot, "gwire/web/dist");
+
+/**
+ * OpenAPI file must exist at runtime. Vercel/serverless bundles often only ship `dist/`,
+ * so `npm run build` copies `../../spec` → `dist/spec` (see scripts/copy-spec.mjs).
+ */
+export function resolveSpecPath(): string {
+  const name = "insurancenow-20253.openapi.yaml";
+  const candidates = [
+    path.join(__dirname, "spec", name),
+    path.join(__dirname, "../../../spec", name),
+    path.join(process.cwd(), "spec", name),
+    path.join(process.cwd(), "gwire/server/dist/spec", name),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  throw new Error(
+    `GWire: OpenAPI spec not found. Tried:\n${candidates.map((c) => `  - ${c}`).join("\n")}`
+  );
+}
+
+export function resolveWebDist(): string {
+  const candidates = [
+    path.join(__dirname, "../../../gwire/web/dist"),
+    path.join(repoRoot, "gwire/web/dist"),
+    path.join(process.cwd(), "gwire/web/dist"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return path.join(repoRoot, "gwire/web/dist");
+}
+
+export const specPath = resolveSpecPath();
+export const webDist = resolveWebDist();
 
 export const store = buildMockStore();
 
