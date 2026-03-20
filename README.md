@@ -13,8 +13,16 @@ npm install
 npm run dev
 ```
 
-- API: `http://localhost:3100` when using `npm run dev` (Vite proxies API calls from the portal)
-- Portal: Vite prints the URL (usually `http://localhost:5173`); open the root path in a browser
+**Local dev endpoints (fixed):**
+
+| | URL |
+|--|-----|
+| API | `http://127.0.0.1:3100` (`PORT=3100` in the root `dev` script) |
+| Portal | `http://localhost:5173` (Vite `strictPort: true` — it will **not** use 5174+ if 5173 is taken) |
+
+Vite proxies `/customers`, `/policies`, `/stats`, etc. to the API. Editing files under `gwire/web/src` hot-reloads in the browser; no extra build step for day-to-day UI work.
+
+If `npm run dev` fails with “port already in use”, stop the other process on **3100** or **5173** (e.g. `lsof -i :5173`, then `kill <pid>`) and run `npm run dev` again — do not add alternate ports in config.
 
 ```bash
 npm run build

@@ -24,7 +24,9 @@ const apiPrefixes = [
 export default defineConfig({
   plugins: [react()],
   server: {
+    /** Fixed local URL: http://localhost:5173 — do not fall back to 5174+ */
     port: 5173,
+    strictPort: true,
     proxy: Object.fromEntries(
       apiPrefixes.map((p) => [
         `/${p}`,

@@ -1,0 +1,18 @@
+---
+description: Fixed local dev ports and browser refresh for UI work
+globs: gwire/web/**/*, gwire/server/**/*, package.json, vercel.json
+---
+
+# Local development
+
+- **API:** `http://127.0.0.1:3100` — set by root `package.json` `dev` script (`PORT=3100` for `gwire-server`).
+- **Portal:** `http://localhost:5173` — `gwire/web/vite.config.ts` uses `port: 5173` and **`strictPort: true`** so Vite never silently moves to 5174+.
+
+## When changing UI (`gwire/web`)
+
+- With `npm run dev` running, **save files** — Vite HMR updates the browser; no need to run `npm run build` for local preview unless checking production output.
+- If the UI does not update, confirm dev is on **5173** and the tab is pointed at that URL (not an old 518x port).
+
+## Port conflicts
+
+- Do **not** change Vite/API ports to “find a free port”. Free **3100** and **5173** (stop stray `node`/`vite` processes) and restart `npm run dev`.
