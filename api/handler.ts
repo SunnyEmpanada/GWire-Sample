@@ -1,14 +1,17 @@
 /**
  * Shared Vercel serverless handler: wraps Fastify with serverless-http.
  * Strips /api prefix so OpenAPI routes (/customers, …) match.
+ *
+ * Vercel compiles `api/*.ts` to CommonJS; `gwire/server/dist/app.js` is ESM.
+ * A static `import` becomes `require()` and throws ERR_REQUIRE_ESM — use dynamic `import()`.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import serverless from "serverless-http";
-import { createApp } from "../gwire/server/dist/app.js";
 
 type Req = IncomingMessage & { url?: string };
 
-let cached: ReturnType<typeof serverless>;
+let cached: ReturnType<typeof serverless> | undefined;
+let initPromise: Promise<void> | null = null;
 
 function stripApiPrefix(req: Req) {
   const raw = req.url;
@@ -22,13 +25,21 @@ function stripApiPrefix(req: Req) {
   req.url = search ? `${normalized}${search}` : normalized;
 }
 
+async function ensureHandler() {
+  if (cached) return;
+  if (!initPromise) {
+    initPromise = (async () => {
+      const { createApp } = await import("../gwire/server/dist/app.js");
+      const app = await createApp();
+      await app.ready();
+      cached = serverless(app as Parameters<typeof serverless>[0]);
+    })();
+  }
+  await initPromise;
+}
+
 export default async function vercelHandler(req: Req, res: ServerResponse) {
   stripApiPrefix(req);
-
-  if (!cached) {
-    const app = await createApp();
-    await app.ready();
-    cached = serverless(app as Parameters<typeof serverless>[0]);
-  }
-  return cached(req, res);
+  await ensureHandler();
+  return cached!(req, res);
 }
