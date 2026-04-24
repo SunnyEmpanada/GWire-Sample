@@ -39,6 +39,19 @@ export interface Claim {
   customerSystemId: string;
 }
 
+/**
+ * GWire extension — NOT part of InsuranceNow.
+ * Three-level risk ranking reported by an external ranker.
+ */
+export type RiskRank = "LOW" | "MEDIUM" | "HIGH";
+
+/**
+ * GWire extension — NOT part of InsuranceNow.
+ * Risk categories the app scaffolds. Only THEFT is rendered in the portal today;
+ * FIRE / FLOOD / EARTHQUAKE are carried end-to-end on the server for future use.
+ */
+export type RiskCategory = "THEFT" | "FIRE" | "FLOOD" | "EARTHQUAKE";
+
 export interface MockStore {
   customers: Customer[];
   policies: Policy[];
@@ -49,4 +62,6 @@ export interface MockStore {
   claimsByCustomerId: Map<string, Claim[]>;
   claimsByPolicyId: Map<string, Claim[]>;
   claimById: Map<string, Claim>;
+  /** GWire extension — per-policy, per-category risk ranks from an external ranker. */
+  riskRanks: Map<string, Partial<Record<RiskCategory, RiskRank>>>;
 }

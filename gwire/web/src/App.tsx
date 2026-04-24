@@ -24,6 +24,17 @@ type Policy = {
   effectiveDt: string;
   expirationDt: string;
   customerSystemId: string;
+  /**
+   * GWire extension (not part of InsuranceNow). Per-category risk ranking from
+   * an external ranker. All four keys are always present; `null` means no rank
+   * has been received yet. Only `theft` is rendered today.
+   */
+  riskRanks?: {
+    theft: string | null;
+    fire: string | null;
+    flood: string | null;
+    earthquake: string | null;
+  };
 };
 
 type ClaimRow = {
@@ -60,6 +71,34 @@ function claimPillClass(status: string): string {
   if (s === "CLOSED") return "pill pill--closed";
   if (s === "DENIED") return "pill pill--denied";
   return "pill pill--line";
+}
+
+function riskPillClass(display: string): string {
+  switch (display) {
+    case "LOW":
+      return "pill pill--risk-low";
+    case "MEDIUM":
+      return "pill pill--risk-medium";
+    case "HIGH":
+      return "pill pill--risk-high";
+    default:
+      return "pill pill--risk-review";
+  }
+}
+
+/** Keys match `Policy.riskRanks` (scaffolded; only theft rendered today). */
+type RiskCategoryKey = "theft" | "fire" | "flood" | "earthquake";
+
+const RISK_CATEGORY_PILL_PREFIX: Record<RiskCategoryKey, string> = {
+  theft: "THEFT RISK",
+  fire: "FIRE RISK",
+  flood: "FLOOD RISK",
+  earthquake: "EARTHQUAKE RISK",
+};
+
+function riskPillLabel(category: RiskCategoryKey, display: string): string {
+  const prefix = RISK_CATEGORY_PILL_PREFIX[category];
+  return display === "IN_REVIEW" ? `${prefix}: In Review` : `${prefix}: ${display}`;
 }
 
 export function App() {
@@ -403,18 +442,29 @@ export function App() {
 
                       <h3>Policies</h3>
                       <ul className="cards">
-                        {customerPolicies.map((p) => (
-                          <li key={p.systemId} className="card">
-                            <div className="card-title">{p.policyNumber}</div>
-                            <div className="card-body">
-                              <span className="pill pill--line">{p.lineCd}</span>
-                              <span>{p.status}</span>
-                            </div>
-                            <div className="muted small">
-                              {p.effectiveDt} → {p.expirationDt}
-                            </div>
-                          </li>
-                        ))}
+                        {customerPolicies.map((p) => {
+                          const theftDisplay =
+                            p.lineCd === "HOME"
+                              ? p.riskRanks?.theft ?? "IN_REVIEW"
+                              : null;
+                          return (
+                            <li key={p.systemId} className="card">
+                              <div className="card-title">{p.policyNumber}</div>
+                              <div className="card-body">
+                                <span className="pill pill--line">{p.lineCd}</span>
+                                {theftDisplay && (
+                                  <span className={riskPillClass(theftDisplay)}>
+                                    {riskPillLabel("theft", theftDisplay)}
+                                  </span>
+                                )}
+                                <span>{p.status}</span>
+                              </div>
+                              <div className="muted small">
+                                {p.effectiveDt} → {p.expirationDt}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
 
                       <h3>Claims</h3>

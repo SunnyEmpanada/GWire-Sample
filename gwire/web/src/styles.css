@@ -503,6 +503,28 @@ body {
   color: #922b21;
 }
 
+/* GWire extension — per-category risk ranking pills. Only THEFT is rendered today. */
+.pill--risk-low {
+  background: #eafaf1;
+  color: #1e8449;
+}
+
+.pill--risk-medium {
+  background: #fef9e7;
+  color: #9a7d0a;
+}
+
+.pill--risk-high {
+  background: #fadbd8;
+  color: #922b21;
+}
+
+.pill--risk-review {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
 .claims {
   list-style: none;
   margin: 0;

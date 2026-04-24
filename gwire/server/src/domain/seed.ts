@@ -171,5 +171,6 @@ export function buildMockStore(seed = 42): MockStore {
     claimsByCustomerId,
     claimsByPolicyId,
     claimById,
+    riskRanks: new Map(),
   };
 }

@@ -35,7 +35,21 @@ npm start
 |------|-------------|
 | `spec/` | InsuranceNow-style OpenAPI (GET operations) |
 | `gwire/server/` | Fastify app: spec-driven routes + domain overrides |
+| `gwire/server/src/domain/extensions/` | GWire-only code that is **not** part of InsuranceNow emulation |
 | `gwire/web/` | Vite + React portal (search customers, policies, claims) |
+
+## API surface
+
+GWire exposes two groups of endpoints:
+
+- **InsuranceNow-emulated (GET only)** — Customers, Policies, Claims, Search, Applications, Products, Billing, Tasks, etc. These are sourced from [`spec/insurancenow-20253.openapi.yaml`](spec/insurancenow-20253.openapi.yaml); drop in the official Guidewire export to broaden coverage.
+- **GWire extensions (non-InsuranceNow)** — custom mock endpoints added on top. Today this covers policy risk ranking:
+  - `POST /policies/{systemId}/riskRanking` — upsert a rank for one policy.
+  - `POST /riskRankings` — bulk-upsert ranks.
+  - `DELETE /riskRankings` — clear all ranks.
+  - `DELETE /riskRankings/{category}` — clear one category across all policies.
+
+Extensions are tagged `GWire Extensions (non-InsuranceNow)` in the OpenAPI spec, live under a clearly labeled section in [`gwire/server/src/app.ts`](gwire/server/src/app.ts), and their supporting logic lives in [`gwire/server/src/domain/extensions/`](gwire/server/src/domain/extensions/).
 
 ## Mock data
 

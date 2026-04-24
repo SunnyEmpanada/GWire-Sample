@@ -19,6 +19,11 @@ tags:
   - name: Tasks
   - name: CodeRefs
   - name: Misc
+  - name: GWire Extensions (non-InsuranceNow)
+    description: >
+      Custom endpoints added by the GWire mock. These are NOT part of the
+      Guidewire InsuranceNow 2025.3 API surface — they exist to support
+      features specific to this mock app (for example, policy risk ranking).
 
 paths:
   /addresses/countries:
@@ -538,6 +543,124 @@ paths:
               schema:
                 $ref: "#/components/schemas/PortfolioStatsSummary"
 
+  # ==============================================================
+  # GWire Extensions — NOT part of InsuranceNow
+  # The paths below are custom to the GWire mock and are not found
+  # in the Guidewire InsuranceNow 2025.3 API surface.
+  # ==============================================================
+
+  /policies/{systemId}/riskRanking:
+    post:
+      tags: ["GWire Extensions (non-InsuranceNow)"]
+      operationId: extUpsertPolicyRiskRanking
+      summary: Upsert a risk ranking for a single policy (GWire extension)
+      description: >
+        GWire-only endpoint. Upserts a risk ranking for one category on one policy.
+        `category` defaults to `THEFT` when omitted; `WATER` is accepted as an alias
+        for `FLOOD`. Ranks may be sent by name (`LOW`/`MEDIUM`/`HIGH`) or number
+        (`1`/`2`/`3`).
+      parameters:
+        - name: systemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiskRankingUpsert"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskRanking"
+        "400":
+          description: Invalid rank or category
+        "404":
+          description: Policy not found
+
+  /riskRankings:
+    post:
+      tags: ["GWire Extensions (non-InsuranceNow)"]
+      operationId: extUpsertRiskRankings
+      summary: Bulk-upsert risk rankings across many policies (GWire extension)
+      description: >
+        GWire-only endpoint. Accepts an array of ranking items. Returns 200 when
+        every item is accepted, or 207 when some are rejected; each rejection is
+        reported individually in `errors`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/RiskRankingBulkItem"
+      responses:
+        "200":
+          description: All items accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskRankingBulkResult"
+        "207":
+          description: Some items accepted, some rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskRankingBulkResult"
+    delete:
+      tags: ["GWire Extensions (non-InsuranceNow)"]
+      operationId: extClearAllRiskRankings
+      summary: Clear all stored risk rankings (GWire extension)
+      description: >
+        GWire-only endpoint. Wipes every stored risk ranking across all policies
+        and all categories. Idempotent.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cleared:
+                    type: integer
+                    description: Number of policies that had at least one rank removed
+
+  /riskRankings/{category}:
+    delete:
+      tags: ["GWire Extensions (non-InsuranceNow)"]
+      operationId: extClearRiskRankingsByCategory
+      summary: Clear all stored risk rankings for one category (GWire extension)
+      description: >
+        GWire-only endpoint. Wipes one category across every policy; other
+        categories are untouched. `WATER` aliases to `FLOOD`.
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/RiskCategoryInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    $ref: "#/components/schemas/RiskCategory"
+                  cleared:
+                    type: integer
+        "400":
+          description: Invalid category
+
 components:
   schemas:
     CountryList:
@@ -668,6 +791,12 @@ components:
           format: date
         customerSystemId:
           type: string
+        riskRanks:
+          description: >
+            GWire extension (not part of InsuranceNow). Per-category risk ranks
+            reported by an external ranker. All four keys are always present;
+            `null` means no ranking has been received for that category.
+          $ref: "#/components/schemas/PolicyRiskRanks"
 
     PolicyFull:
       allOf:
@@ -908,3 +1037,113 @@ components:
                 type: string
               customerCount:
                 type: integer
+
+    # ==============================================================
+    # GWire Extensions — NOT part of InsuranceNow
+    # The schemas below back the GWire custom endpoints documented
+    # above under the "GWire Extensions (non-InsuranceNow)" tag.
+    # ==============================================================
+
+    RiskRank:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+      description: GWire extension — three-level policy risk ranking.
+
+    RiskCategory:
+      type: string
+      enum: [THEFT, FIRE, FLOOD, EARTHQUAKE]
+      description: >
+        GWire extension — canonical category name stored by the server.
+        Input is normalized from case variants (and `WATER` -> `FLOOD`).
+
+    RiskCategoryInput:
+      type: string
+      description: >
+        GWire extension — accepted on input for a category. Canonical values
+        are THEFT, FIRE, FLOOD, EARTHQUAKE (case-insensitive); `WATER` is
+        accepted as an alias for FLOOD.
+      enum: [THEFT, FIRE, FLOOD, EARTHQUAKE, WATER, theft, fire, flood, earthquake, water]
+
+    RiskRankInput:
+      description: >
+        GWire extension — accepted rank on input. `LOW`/`MEDIUM`/`HIGH`
+        (case-insensitive), or numeric 1/2/3, or the numeric strings "1"/"2"/"3".
+      oneOf:
+        - type: string
+        - type: integer
+          enum: [1, 2, 3]
+
+    PolicyRiskRanks:
+      type: object
+      description: >
+        GWire extension — per-category rank for one policy. All four keys are
+        always present; `null` means no ranking has been received for that slot.
+      properties:
+        theft:
+          type: string
+          nullable: true
+          enum: [LOW, MEDIUM, HIGH, null]
+        fire:
+          type: string
+          nullable: true
+          enum: [LOW, MEDIUM, HIGH, null]
+        flood:
+          type: string
+          nullable: true
+          enum: [LOW, MEDIUM, HIGH, null]
+        earthquake:
+          type: string
+          nullable: true
+          enum: [LOW, MEDIUM, HIGH, null]
+
+    RiskRankingUpsert:
+      type: object
+      description: GWire extension — request body for per-policy risk upsert.
+      required: [rank]
+      properties:
+        rank:
+          $ref: "#/components/schemas/RiskRankInput"
+        category:
+          $ref: "#/components/schemas/RiskCategoryInput"
+
+    RiskRankingBulkItem:
+      type: object
+      description: GWire extension — one entry in a bulk risk-ranking upsert.
+      required: [policySystemId, rank]
+      properties:
+        policySystemId:
+          type: string
+        rank:
+          $ref: "#/components/schemas/RiskRankInput"
+        category:
+          $ref: "#/components/schemas/RiskCategoryInput"
+
+    RiskRanking:
+      type: object
+      description: GWire extension — canonical stored form of a single ranking.
+      properties:
+        policySystemId:
+          type: string
+        category:
+          $ref: "#/components/schemas/RiskCategory"
+        rank:
+          $ref: "#/components/schemas/RiskRank"
+
+    RiskRankingBulkResult:
+      type: object
+      description: GWire extension — response from the bulk upsert endpoint.
+      properties:
+        accepted:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiskRanking"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              policySystemId:
+                type: string
+                nullable: true
+              error:
+                type: string

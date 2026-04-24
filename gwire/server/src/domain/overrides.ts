@@ -1,6 +1,7 @@
 import type { FastifyRequest } from "fastify";
 import type { OpenAPI } from "openapi-types";
 import type { MockStore } from "./types.js";
+import { withRisk } from "./extensions/riskRanking.js";
 
 /** Return undefined = skip override, null = 404, else body */
 export function handleOverride(
@@ -115,7 +116,7 @@ export function handleOverride(
     }
     case "listPolicies":
       return {
-        policies: store.policies,
+        policies: store.policies.map((p) => withRisk(store, p)),
         nextPageToken: null,
       };
     case "getPolicy":
@@ -134,7 +135,7 @@ export function handleOverride(
       }
       if (operationId === "getPolicyFull") {
         return {
-          ...p,
+          ...withRisk(store, p),
           coverages: [
             {
               coverageCd: p.lineCd === "HOME" ? "DWELL" : "COLL",
@@ -144,7 +145,7 @@ export function handleOverride(
           risks: [{ description: p.lineCd === "HOME" ? "Primary dwelling" : "Primary vehicle" }],
         };
       }
-      return p;
+      return withRisk(store, p);
     }
     case "listPolicyDocuments":
     case "listInsuredDocuments": {

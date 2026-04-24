@@ -9,6 +9,12 @@ import { loadSpec, listGetOperations, toFastifyPath } from "./openapi/loadSpec.j
 import { sampleJsonResponse } from "./openapi/sampleResponse.js";
 import { buildMockStore } from "./domain/seed.js";
 import { handleOverride } from "./domain/overrides.js";
+import {
+  clearCategory,
+  normalizeCategory,
+  normalizeRank,
+  setRiskRank,
+} from "./domain/extensions/riskRanking.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +81,109 @@ export async function createApp() {
       return reply.type("application/json").send(body);
     });
   }
+
+  // ==============================================================
+  // GWire Extensions — NOT part of InsuranceNow emulation
+  // The endpoints below are custom to this mock app and are not
+  // found in the Guidewire InsuranceNow 2025.3 OpenAPI surface.
+  // They are documented in spec/insurancenow-20253.openapi.yaml
+  // under the "GWire Extensions (non-InsuranceNow)" tag.
+  // ==============================================================
+
+  // POST /policies/:systemId/riskRanking — upsert a rank for one policy.
+  // Body: { rank: "LOW"|"MEDIUM"|"HIGH" | 1|2|3, category?: "THEFT"|"FIRE"|"FLOOD"|"EARTHQUAKE" }
+  // `category` defaults to "THEFT" when omitted; "WATER" aliases to "FLOOD".
+  app.post("/policies/:systemId/riskRanking", async (req, reply) => {
+    const { systemId } = req.params as { systemId: string };
+    const body = (req.body ?? {}) as { rank?: unknown; category?: unknown };
+    const rank = normalizeRank(body.rank);
+    const category = normalizeCategory(body.category ?? "THEFT");
+    if (!rank) {
+      return reply
+        .code(400)
+        .send({ message: "rank must be LOW|MEDIUM|HIGH or 1|2|3" });
+    }
+    if (!category) {
+      return reply
+        .code(400)
+        .send({ message: "category must be THEFT|FIRE|FLOOD|EARTHQUAKE" });
+    }
+    if (!store.policyById.has(systemId)) {
+      return reply.code(404).send({ message: "policy not found" });
+    }
+    setRiskRank(store, systemId, category, rank);
+    return reply.code(200).send({ policySystemId: systemId, category, rank });
+  });
+
+  // POST /riskRankings — bulk upsert. Body: [{ policySystemId, category?, rank }, ...]
+  // Returns 200 when all items are accepted, 207 when some were rejected.
+  app.post("/riskRankings", async (req, reply) => {
+    const items = Array.isArray(req.body) ? (req.body as unknown[]) : [];
+    const accepted: Array<{
+      policySystemId: string;
+      category: string;
+      rank: string;
+    }> = [];
+    const errors: Array<{ policySystemId: string | null; error: string }> = [];
+    for (const raw of items) {
+      const item = (raw ?? {}) as {
+        policySystemId?: unknown;
+        category?: unknown;
+        rank?: unknown;
+      };
+      const policySystemId =
+        typeof item.policySystemId === "string" ? item.policySystemId : null;
+      if (!policySystemId) {
+        errors.push({ policySystemId: null, error: "policySystemId is required" });
+        continue;
+      }
+      if (!store.policyById.has(policySystemId)) {
+        errors.push({ policySystemId, error: "policy not found" });
+        continue;
+      }
+      const rank = normalizeRank(item.rank);
+      if (!rank) {
+        errors.push({
+          policySystemId,
+          error: "rank must be LOW|MEDIUM|HIGH or 1|2|3",
+        });
+        continue;
+      }
+      const category = normalizeCategory(item.category ?? "THEFT");
+      if (!category) {
+        errors.push({
+          policySystemId,
+          error: "category must be THEFT|FIRE|FLOOD|EARTHQUAKE",
+        });
+        continue;
+      }
+      setRiskRank(store, policySystemId, category, rank);
+      accepted.push({ policySystemId, category, rank });
+    }
+    return reply
+      .code(errors.length ? 207 : 200)
+      .send({ accepted, errors });
+  });
+
+  // DELETE /riskRankings — wipe all ranks across all policies and categories.
+  app.delete("/riskRankings", async (_req, reply) => {
+    const cleared = store.riskRanks.size;
+    store.riskRanks.clear();
+    return reply.code(200).send({ cleared });
+  });
+
+  // DELETE /riskRankings/:category — wipe one category across all policies.
+  app.delete("/riskRankings/:category", async (req, reply) => {
+    const raw = (req.params as { category?: string }).category;
+    const category = normalizeCategory(raw);
+    if (!category) {
+      return reply
+        .code(400)
+        .send({ message: "category must be THEFT|FIRE|FLOOD|EARTHQUAKE" });
+    }
+    const cleared = clearCategory(store, category);
+    return reply.code(200).send({ category, cleared });
+  });
 
   if (existsSync(webDist)) {
     await app.register(fastifyStatic, {
