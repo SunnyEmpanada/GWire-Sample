@@ -13,6 +13,7 @@ test("seed has 100 California customers and 50/50 home vs auto", () => {
   for (const c of s.customers) {
     assert.equal(c.address.stateProvCd, "CA");
     assert.equal(c.address.countryCd, "US");
+    assert.match(c.address.county, /.+/, "county should be set from city");
   }
   for (const p of s.policies) {
     assert.equal(p.status, "IN_FORCE");

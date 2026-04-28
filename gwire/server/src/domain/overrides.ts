@@ -209,6 +209,7 @@ export function handleOverride(
           c.primaryEmail.toLowerCase().includes(q) ||
           c.primaryPhone.includes(q) ||
           c.address.city.toLowerCase().includes(q) ||
+          c.address.county.toLowerCase().includes(q) ||
           c.accountNumber.toLowerCase().includes(q)
         ) {
           hits.push({ resourceName: "Customer", systemId: c.systemId, title: c.displayName });

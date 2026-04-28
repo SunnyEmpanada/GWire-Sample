@@ -7,9 +7,12 @@ type Customer = {
   primaryEmail: string;
   primaryPhone: string;
   address: {
+    addressLine1: string;
     city: string;
+    county: string;
     stateProvCd: string;
     postalCode: string;
+    countryCd: string;
   };
   accountNumber: string;
   /** OPEN + PENDING claims (from list API) */
@@ -210,6 +213,7 @@ export function App() {
         c.primaryEmail.toLowerCase().includes(q) ||
         c.primaryPhone.includes(q) ||
         c.address.city.toLowerCase().includes(q) ||
+        c.address.county.toLowerCase().includes(q) ||
         c.accountNumber.toLowerCase().includes(q)
     );
   }, [customers, policies, query]);
@@ -256,7 +260,7 @@ export function App() {
           <input
             className="search"
             type="search"
-            placeholder="Go to — search name, email, phone, policy #, city…"
+            placeholder="Go to — search name, email, phone, policy #, city, county…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search customers"
@@ -438,6 +442,22 @@ export function App() {
                         <dd>{selected.primaryPhone}</dd>
                         <dt>Account</dt>
                         <dd>{selected.accountNumber}</dd>
+                      </dl>
+
+                      <h3>Mailing address</h3>
+                      <dl className="dl">
+                        <dt>Street</dt>
+                        <dd>{selected.address.addressLine1}</dd>
+                        <dt>City</dt>
+                        <dd>{selected.address.city}</dd>
+                        <dt>County</dt>
+                        <dd>{selected.address.county}</dd>
+                        <dt>State</dt>
+                        <dd>{selected.address.stateProvCd}</dd>
+                        <dt>ZIP</dt>
+                        <dd>{selected.address.postalCode}</dd>
+                        <dt>Country</dt>
+                        <dd>{selected.address.countryCd}</dd>
                       </dl>
 
                       <h3>Policies</h3>

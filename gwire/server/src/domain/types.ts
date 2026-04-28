@@ -1,6 +1,8 @@
 export interface Address {
   addressLine1: string;
   city: string;
+  /** US county name derived from city for mock data (e.g. "Orange", "Los Angeles"). */
+  county: string;
   stateProvCd: string;
   postalCode: string;
   countryCd: string;

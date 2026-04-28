@@ -26,7 +26,26 @@ const CA_CITIES = [
   "Irvine",
   "Chula Vista",
   "Fremont",
-];
+] as const;
+
+/** Primary county for each seeded California city (single-county assignment for mock data). */
+const CA_CITY_TO_COUNTY: Record<(typeof CA_CITIES)[number], string> = {
+  "Los Angeles": "Los Angeles",
+  "San Diego": "San Diego",
+  "San Jose": "Santa Clara",
+  "San Francisco": "San Francisco",
+  "Fresno": "Fresno",
+  "Sacramento": "Sacramento",
+  "Oakland": "Alameda",
+  "Bakersfield": "Kern",
+  Anaheim: "Orange",
+  "Santa Ana": "Orange",
+  Riverside: "Riverside",
+  Stockton: "San Joaquin",
+  Irvine: "Orange",
+  "Chula Vista": "San Diego",
+  Fremont: "Alameda",
+};
 
 const STREETS = [
   "Oak St",
@@ -87,6 +106,7 @@ export function buildMockStore(seed = 42): MockStore {
     const address: Address = {
       addressLine1: `${num} ${street}`,
       city,
+      county: CA_CITY_TO_COUNTY[city],
       stateProvCd: "CA",
       postalCode: zip,
       countryCd: "US",

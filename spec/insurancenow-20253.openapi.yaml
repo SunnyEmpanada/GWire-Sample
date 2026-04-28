@@ -715,6 +715,9 @@ components:
           type: string
         city:
           type: string
+        county:
+          type: string
+          description: County for the address (mock — derived from city in seed data)
         stateProvCd:
           type: string
         postalCode:
