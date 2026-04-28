@@ -8,11 +8,42 @@
  *
  * Vercel compiles `api/*.ts` to CommonJS; `gwire/server/dist/app.js` is ESM — use
  * dynamic `import()` for `createApp`.
+ *
+ * For mutating methods, the raw request body must be read and passed to `inject()` as
+ * `payload`. Otherwise `Content-Type: application/json` with a non-zero
+ * `Content-Length` causes Fastify to treat the request as malformed (400) because
+ * no bytes are supplied to the parser.
  */
 import type { FastifyInstance } from "fastify";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 type Req = IncomingMessage & { url?: string };
+
+/** Read raw body from the Node request (Vercel passes an unconsumed stream). */
+function readRequestBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      resolve(Buffer.concat(chunks));
+    });
+    req.on("error", reject);
+  });
+}
+
+function headersForInject(
+  headers: IncomingMessage["headers"],
+  payload: Buffer | undefined
+): Record<string, string | string[] | undefined> {
+  const out = { ...headers } as Record<string, string | string[] | undefined>;
+  if (payload !== undefined && payload.length > 0) {
+    delete out["content-length"];
+    delete out["transfer-encoding"];
+  }
+  return out;
+}
 
 let cached: FastifyInstance | undefined;
 let initPromise: Promise<void> | null = null;
@@ -62,10 +93,19 @@ export default async function vercelHandler(req: Req, res: ServerResponse) {
   const url = resolveLogicalUrl(req);
   const app = await ensureApp();
 
+  const method = (req.method ?? "GET").toUpperCase();
+  const mayHaveBody = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+  let payload: Buffer | undefined;
+  if (mayHaveBody) {
+    const buf = await readRequestBody(req);
+    if (buf.length > 0) payload = buf;
+  }
+
   const response = await app.inject({
-    method: req.method ?? "GET",
+    method,
     url,
-    headers: req.headers as Record<string, string | string[] | undefined>,
+    headers: headersForInject(req.headers, payload),
+    ...(payload !== undefined ? { payload } : {}),
   });
 
   res.statusCode = response.statusCode;
