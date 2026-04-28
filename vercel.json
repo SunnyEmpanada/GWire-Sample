@@ -12,7 +12,7 @@
   ],
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "gwire/server/dist/spec/**"
+      "includeFiles": "gwire/server/dist/**"
     }
   }
 }
