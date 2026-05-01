@@ -9,12 +9,17 @@ import { loadSpec, listGetOperations, toFastifyPath } from "./openapi/loadSpec.j
 import { sampleJsonResponse } from "./openapi/sampleResponse.js";
 import { buildMockStore } from "./domain/seed.js";
 import { handleOverride } from "./domain/overrides.js";
+import type { RiskCategory } from "./domain/types.js";
 import {
   clearCategory,
   normalizeCategory,
   normalizeRank,
   setRiskRank,
 } from "./domain/extensions/riskRanking.js";
+import {
+  createRiskPersistenceFromEnv,
+  type RiskPersistence,
+} from "./domain/extensions/riskPersistence.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,8 +63,27 @@ export const webDist = resolveWebDist();
 
 export const store = buildMockStore();
 
-export async function createApp() {
+function countPoliciesWithAnyRisk(): number {
+  return store.riskRanks.size;
+}
+
+function countPoliciesWithCategory(category: RiskCategory): number {
+  let count = 0;
+  for (const entry of store.riskRanks.values()) {
+    if (entry[category] !== undefined) count += 1;
+  }
+  return count;
+}
+
+function riskPersistenceMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "risk persistence failed";
+}
+
+export async function createApp(options: { riskPersistence?: RiskPersistence } = {}) {
   const spec = (await loadSpec(specPath)) as OpenAPI.Document;
+  const riskPersistence = options.riskPersistence ?? createRiskPersistenceFromEnv();
+  await riskPersistence.initialize(store);
+
   const app = Fastify({
     logger: process.env.NODE_ENV === "production",
   });
@@ -111,6 +135,14 @@ export async function createApp() {
     if (!store.policyById.has(systemId)) {
       return reply.code(404).send({ message: "policy not found" });
     }
+    try {
+      await riskPersistence.upsertRank(systemId, category, rank);
+    } catch (error) {
+      return reply.code(503).send({
+        message: "Could not persist risk ranking",
+        detail: riskPersistenceMessage(error),
+      });
+    }
     setRiskRank(store, systemId, category, rank);
     return reply.code(200).send({ policySystemId: systemId, category, rank });
   });
@@ -121,8 +153,8 @@ export async function createApp() {
     const items = Array.isArray(req.body) ? (req.body as unknown[]) : [];
     const accepted: Array<{
       policySystemId: string;
-      category: string;
-      rank: string;
+      category: RiskCategory;
+      rank: NonNullable<ReturnType<typeof normalizeRank>>;
     }> = [];
     const errors: Array<{ policySystemId: string | null; error: string }> = [];
     for (const raw of items) {
@@ -157,8 +189,18 @@ export async function createApp() {
         });
         continue;
       }
-      setRiskRank(store, policySystemId, category, rank);
       accepted.push({ policySystemId, category, rank });
+    }
+    try {
+      await riskPersistence.upsertRanks(accepted);
+    } catch (error) {
+      return reply.code(503).send({
+        message: "Could not persist risk rankings",
+        detail: riskPersistenceMessage(error),
+      });
+    }
+    for (const row of accepted) {
+      setRiskRank(store, row.policySystemId, row.category, row.rank);
     }
     return reply
       .code(errors.length ? 207 : 200)
@@ -167,7 +209,15 @@ export async function createApp() {
 
   // DELETE /riskRankings — wipe all ranks across all policies and categories.
   app.delete("/riskRankings", async (_req, reply) => {
-    const cleared = store.riskRanks.size;
+    const cleared = countPoliciesWithAnyRisk();
+    try {
+      await riskPersistence.clearAll();
+    } catch (error) {
+      return reply.code(503).send({
+        message: "Could not clear risk rankings",
+        detail: riskPersistenceMessage(error),
+      });
+    }
     store.riskRanks.clear();
     return reply.code(200).send({ cleared });
   });
@@ -181,7 +231,16 @@ export async function createApp() {
         .code(400)
         .send({ message: "category must be THEFT|FIRE|FLOOD|EARTHQUAKE" });
     }
-    const cleared = clearCategory(store, category);
+    const cleared = countPoliciesWithCategory(category);
+    try {
+      await riskPersistence.clearCategory(category);
+    } catch (error) {
+      return reply.code(503).send({
+        message: "Could not clear risk rankings",
+        detail: riskPersistenceMessage(error),
+      });
+    }
+    clearCategory(store, category);
     return reply.code(200).send({ category, cleared });
   });
 
@@ -190,6 +249,15 @@ export async function createApp() {
       root: webDist,
       prefix: "/",
       index: ["index.html"],
+    });
+
+    // SPA deep links (e.g. `/CUST-00002`): no static file → serve `index.html` for browsers.
+    app.setNotFoundHandler((req, reply) => {
+      const accept = req.headers.accept ?? "";
+      if (req.method === "GET" && accept.includes("text/html")) {
+        return reply.type("text/html").sendFile("index.html");
+      }
+      return reply.code(404).type("application/json").send({ message: "Not found" });
     });
   }
 

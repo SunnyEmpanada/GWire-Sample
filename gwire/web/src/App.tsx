@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { getJson } from "./api";
 
 type Customer = {
@@ -30,7 +32,7 @@ type Policy = {
   /**
    * GWire extension (not part of InsuranceNow). Per-category risk ranking from
    * an external ranker. All four keys are always present; `null` means no rank
-   * has been received yet. Only `theft` is rendered today.
+   * yet (in review).
    */
   riskRanks?: {
     theft: string | null;
@@ -67,6 +69,24 @@ type PortfolioStats = {
 
 type MainView = "summary" | "customers";
 
+function routeFromPath(pathname: string): {
+  view: MainView;
+  customerSegment: string | null;
+  invalidPath: boolean;
+} {
+  const segments = pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+  if (segments.length > 1) {
+    return { view: "customers", customerSegment: null, invalidPath: true };
+  }
+  if (segments.length === 0) {
+    return { view: "summary", customerSegment: null, invalidPath: false };
+  }
+  if (segments[0] === "summary") {
+    return { view: "summary", customerSegment: null, invalidPath: false };
+  }
+  return { view: "customers", customerSegment: segments[0], invalidPath: false };
+}
+
 function claimPillClass(status: string): string {
   const s = status.toUpperCase();
   if (s === "OPEN") return "pill pill--open";
@@ -89,8 +109,30 @@ function riskPillClass(display: string): string {
   }
 }
 
-/** Keys match `Policy.riskRanks` (scaffolded; only theft rendered today). */
+/** Keys match `Policy.riskRanks`. */
 type RiskCategoryKey = "theft" | "fire" | "flood" | "earthquake";
+
+type RiskRankValue = "LOW" | "MEDIUM" | "HIGH";
+
+const RISK_OVERVIEW_ROWS: { key: RiskCategoryKey; label: string }[] = [
+  { key: "theft", label: "Theft" },
+  { key: "fire", label: "Fire" },
+  { key: "flood", label: "Flood" },
+  { key: "earthquake", label: "Earthquake" },
+];
+
+/** Highest severity wins when multiple policies differ. */
+function worstRankAcrossPolicies(policies: Policy[], category: RiskCategoryKey): RiskRankValue | null {
+  const order: Record<RiskRankValue, number> = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+  let best: RiskRankValue | null = null;
+  for (const p of policies) {
+    const v = p.riskRanks?.[category];
+    if (v === "LOW" || v === "MEDIUM" || v === "HIGH") {
+      if (!best || order[v] > order[best]) best = v;
+    }
+  }
+  return best;
+}
 
 const RISK_CATEGORY_PILL_PREFIX: Record<RiskCategoryKey, string> = {
   theft: "THEFT RISK",
@@ -104,19 +146,566 @@ function riskPillLabel(category: RiskCategoryKey, display: string): string {
   return display === "IN_REVIEW" ? `${prefix}: In Review` : `${prefix}: ${display}`;
 }
 
-export function App() {
+function formatCurrency(value: number): string {
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function Panel({
+  title,
+  eyebrow,
+  children,
+  className = "",
+  actions,
+}: {
+  title: string;
+  eyebrow?: string;
+  children: ReactNode;
+  className?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <section className={`in-panel ${className}`.trim()}>
+      <div className="in-panel-header">
+        <div>
+          {eyebrow && <div className="panel-eyebrow">{eyebrow}</div>}
+          <h2>{title}</h2>
+        </div>
+        {actions && <div className="panel-actions">{actions}</div>}
+      </div>
+      <div className="in-panel-body">{children}</div>
+    </section>
+  );
+}
+
+function MetricTile({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+  return (
+    <div className={`metric-tile ${tone ? `metric-tile--${tone}` : ""}`.trim()}>
+      <div className="metric-value">{value}</div>
+      <div className="metric-label">{label}</div>
+    </div>
+  );
+}
+
+function RiskMetricTile({ label, rank }: { label: string; rank: RiskRankValue | null }) {
+  const rankTone =
+    rank === "LOW" ? "risk-low" : rank === "MEDIUM" ? "risk-medium" : rank === "HIGH" ? "risk-high" : "risk-na";
+  const value = rank ?? "N/A";
+  return (
+    <div className={`metric-tile metric-tile--risk metric-tile--${rankTone}`.trim()}>
+      <div className="metric-value">{value}</div>
+      <div className="metric-label">{label}</div>
+    </div>
+  );
+}
+
+function TopBar({
+  view,
+  onHome,
+  onSummary,
+}: {
+  view: MainView;
+  onHome: () => void;
+  onSummary: () => void;
+}) {
+  const navItems = [
+    { label: "Home", active: view === "summary", onClick: onSummary },
+    { label: "Quote/Policy" },
+    { label: "Billing" },
+    { label: "Claims" },
+    { label: "Payables" },
+    { label: "Commission" },
+    { label: "Cabinets" },
+    { label: "Operations" },
+    { label: "Support" },
+  ];
+
+  return (
+    <header className="app-header">
+      <div className="brand">
+        <button type="button" className="brand-mark" onClick={onHome} aria-label="Home - portfolio summary">
+          <img className="brand-icon" src="/assets/icon.png" alt="" aria-hidden="true" />
+          <span className="brand-guidewire">GUIDEWIRE</span>
+          <span className="brand-product">InsuranceNow</span>
+        </button>
+      </div>
+      <nav className="product-nav" aria-label="Product">
+        {navItems.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            className={item.active ? "product-nav-item active" : "product-nav-item"}
+            onClick={item.onClick}
+            disabled={!item.onClick}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <div className="user-dot" aria-label="Current user" />
+    </header>
+  );
+}
+
+function LeftNav({
+  view,
+  query,
+  onQueryChange,
+  customers,
+  customerSegment,
+  loading,
+  sidebarScrollRef,
+  onScroll,
+  onSummary,
+  onSelectCustomer,
+}: {
+  view: MainView;
+  query: string;
+  onQueryChange: (value: string) => void;
+  customers: Customer[];
+  customerSegment: string | null;
+  loading: boolean;
+  sidebarScrollRef: RefObject<HTMLDivElement | null>;
+  onScroll: () => void;
+  onSummary: () => void;
+  onSelectCustomer: (id: string) => void;
+}) {
+  return (
+    <aside className="left-rail">
+      <div className="rail-search">
+        <input
+          className="search"
+          type="search"
+          placeholder="Search"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          aria-label="Search customers"
+        />
+        <span className="rail-search-button" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+          </svg>
+        </span>
+      </div>
+      <div className="advanced-search">
+        Advanced Search: <span>Policy</span> <span>Claims</span>
+      </div>
+
+      <nav className="side-nav" aria-label="Primary">
+        <button
+          type="button"
+          className={view === "summary" ? "nav-item active" : "nav-item"}
+          onClick={onSummary}
+        >
+          Dashboard
+        </button>
+      </nav>
+
+      <div className="sidebar-section-title">Customers</div>
+      <div ref={sidebarScrollRef} className="sidebar-scroll" onScroll={onScroll}>
+        {loading && <p className="muted rail-loading">Loading...</p>}
+        <ul className="list">
+          {customers.map((c) => (
+            <li key={c.systemId}>
+              <button
+                type="button"
+                className={view === "customers" && c.systemId === customerSegment ? "row active" : "row"}
+                onClick={() => onSelectCustomer(c.systemId)}
+              >
+                <span className="row-text">
+                  <span className="name">{c.displayName}</span>
+                  <span className="meta">
+                    {c.address.city}, {c.address.county}
+                  </span>
+                </span>
+                {(c.openClaimCount ?? 0) > 0 && (
+                  <span className="row-open-pill row-open-pill--has" aria-label={`${c.openClaimCount} open claims`}>
+                    {c.openClaimCount}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </aside>
+  );
+}
+
+function RightActionRail() {
+  const actions = ["Summary", "New Quote", "Make Payment", "Report Loss", "New Note", "Timeline"];
+
+  return (
+    <aside className="right-action-rail" aria-label="Quick actions">
+      {actions.map((action) => (
+        <button key={action} type="button" className="rail-action" disabled>
+          <span className="rail-action-icon" aria-hidden>
+            {action.slice(0, 1)}
+          </span>
+          <span>{action}</span>
+        </button>
+      ))}
+    </aside>
+  );
+}
+
+function EntityHeader({
+  selected,
+  customerPolicies,
+  openClaims,
+}: {
+  selected: Customer;
+  customerPolicies: Policy[];
+  openClaims: number;
+}) {
+  const primaryPolicy = customerPolicies[0];
+
+  return (
+    <section className="entity-header">
+      <div className="entity-header-title">
+        <span className="entity-badge">ACCOUNT</span>
+        <div>
+          <div className="entity-name">{selected.displayName}</div>
+          <div className="entity-subtitle">{selected.accountNumber}</div>
+        </div>
+      </div>
+      <dl className="entity-meta">
+        <div>
+          <dt>Customer ID</dt>
+          <dd>{selected.systemId}</dd>
+        </div>
+        <div>
+          <dt>Primary Policy</dt>
+          <dd>{primaryPolicy?.policyNumber ?? "None"}</dd>
+        </div>
+        <div>
+          <dt>Policy Count</dt>
+          <dd>{customerPolicies.length}</dd>
+        </div>
+        <div>
+          <dt>Open Claims</dt>
+          <dd>{openClaims > 0 ? <span className="pill pill--open">{openClaims} open</span> : "None"}</dd>
+        </div>
+      </dl>
+      <div className="entity-actions">
+        <button type="button" className="toolbar-button" disabled>
+          View Notes
+        </button>
+        <button type="button" className="toolbar-button" disabled>
+          More
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SummaryPage({
+  stats,
+  loading,
+  statsErr,
+}: {
+  stats: PortfolioStats | null;
+  loading: boolean;
+  statsErr: string | null;
+}) {
+  return (
+    <div className="page-stack summary-screen">
+      <div className="workspace-title">
+        <span>Business Intelligence</span>
+        <h1>Experience Summary</h1>
+      </div>
+      {statsErr && <div className="banner error">{statsErr}</div>}
+      {!stats && !statsErr && loading && <p className="muted">Loading portfolio stats...</p>}
+      {stats && (
+        <>
+          <div className="summary-grid">
+            <Panel title="Claims by status" eyebrow="Portfolio">
+              <p className="muted small panel-note">Open includes OPEN and PENDING claims.</p>
+              <div className="metric-row">
+                <MetricTile label="Open" value={stats.claimCounts.open} tone="open" />
+                <MetricTile label="Closed" value={stats.claimCounts.closed} tone="closed" />
+                <MetricTile label="Denied" value={stats.claimCounts.denied} tone="denied" />
+              </div>
+            </Panel>
+            <Panel title="Amounts" eyebrow="Claim Financials">
+              <dl className="dense-dl">
+                <div>
+                  <dt>Total paid (all claims)</dt>
+                  <dd>${formatCurrency(stats.totalPaidAllClaims)}</dd>
+                </div>
+                <div>
+                  <dt>Total on open claims</dt>
+                  <dd>
+                    ${formatCurrency(stats.totalOpenClaimsAmount)}
+                    <span className="muted small"> paid + reserve</span>
+                  </dd>
+                </div>
+              </dl>
+            </Panel>
+          </div>
+          <Panel title="Top 5 cities by customers" eyebrow="Distribution" className="cities-panel">
+            <ol className="top-cities">
+              {stats.topCitiesByCustomers.map((row) => (
+                <li key={row.city}>
+                  <span className="top-cities-name">{row.city}</span>
+                  <span className="top-cities-count">{row.customerCount} customers</span>
+                </li>
+              ))}
+            </ol>
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CustomerPage({
+  selected,
+  unknownCustomer,
+  customerSegment,
+  customerPolicies,
+  claims,
+  openClaims,
+  claimDetailId,
+  claimDetail,
+  onLoadClaimDetail,
+  onHome,
+}: {
+  selected: Customer | null;
+  unknownCustomer: boolean;
+  customerSegment: string | null;
+  customerPolicies: Policy[];
+  claims: ClaimRow[];
+  openClaims: number;
+  claimDetailId: string | null;
+  claimDetail: ClaimDetail | null;
+  onLoadClaimDetail: (id: string) => void;
+  onHome: () => void;
+}) {
+  if (unknownCustomer && customerSegment) {
+    return (
+      <div className="banner error">
+        No customer with ID <strong>{customerSegment}</strong>. Choose someone from the list or go{" "}
+        <button type="button" className="linkish" onClick={onHome}>
+          home
+        </button>
+        .
+      </div>
+    );
+  }
+
+  if (!selected) {
+    return (
+      <Panel title="Customers" eyebrow="Account Search">
+        <p className="muted">Select a customer to view policies and claims.</p>
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="page-stack">
+      <EntityHeader selected={selected} customerPolicies={customerPolicies} openClaims={openClaims} />
+
+      <div className="customer-grid">
+        <Panel title="Account Information" className="account-panel">
+          <dl className="info-grid">
+            <div>
+              <dt>Email</dt>
+              <dd>{selected.primaryEmail}</dd>
+            </div>
+            <div>
+              <dt>Phone</dt>
+              <dd>{selected.primaryPhone}</dd>
+            </div>
+            <div>
+              <dt>Billing Address</dt>
+              <dd>
+                {selected.address.addressLine1}
+                <br />
+                {selected.address.city}, {selected.address.stateProvCd} {selected.address.postalCode}
+              </dd>
+            </div>
+            <div>
+              <dt>County</dt>
+              <dd>{selected.address.county}</dd>
+            </div>
+          </dl>
+        </Panel>
+
+        <Panel title="Portfolio Overview" className="overview-panel">
+          <div className="metric-row metric-row--compact">
+            <MetricTile label="Policies" value={customerPolicies.length} />
+            <MetricTile label="Claims" value={claims.length} />
+            <MetricTile label="Open" value={openClaims} tone="open" />
+          </div>
+          <div className="portfolio-risk-block">
+            <h3 className="portfolio-risk-heading">Risk</h3>
+            <p className="muted small portfolio-risk-note">
+              Across all policies; N/A when the category is still in review (no rank assigned).
+            </p>
+            <div className="metric-row metric-row--risk">
+              {RISK_OVERVIEW_ROWS.map(({ key, label }) => (
+                <RiskMetricTile key={key} label={label} rank={worstRankAcrossPolicies(customerPolicies, key)} />
+              ))}
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="Policies" eyebrow="Policy File">
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Policy #</th>
+                <th>Line</th>
+                <th>Status</th>
+                <th>Risk</th>
+                <th>Term</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerPolicies.map((p) => {
+                const theftDisplay = p.lineCd === "HOME" ? p.riskRanks?.theft ?? "IN_REVIEW" : null;
+                return (
+                  <tr key={p.systemId}>
+                    <td className="link-cell">{p.policyNumber}</td>
+                    <td>
+                      <span className="pill pill--policy-line">{p.lineCd}</span>
+                    </td>
+                    <td>{p.status}</td>
+                    <td>
+                      {theftDisplay ? (
+                        <span className={riskPillClass(theftDisplay)}>
+                          {riskPillLabel("theft", theftDisplay)}
+                        </span>
+                      ) : (
+                        <span className="muted">N/A</span>
+                      )}
+                    </td>
+                    <td>
+                      {p.effectiveDt} - {p.expirationDt}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel title="Claims" eyebrow="Loss History">
+        {claims.length === 0 && <p className="muted">No claims on file for this customer.</p>}
+        {claims.length > 0 && (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Claim #</th>
+                  <th>Status</th>
+                  <th>Loss Type</th>
+                  <th>Loss Date</th>
+                  <th>Policy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {claims.map((cl) => (
+                  <tr key={cl.systemId} className={cl.systemId === claimDetailId ? "selected-row" : ""}>
+                    <td>
+                      <button type="button" className="table-action-link" onClick={() => onLoadClaimDetail(cl.systemId)}>
+                        {cl.claimNumber}
+                      </button>
+                    </td>
+                    <td>
+                      <span className={claimPillClass(cl.status)}>{cl.status}</span>
+                    </td>
+                    <td>{cl.lossType}</td>
+                    <td>{cl.lossDt}</td>
+                    <td>{cl.policySystemId}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {claimDetail && claimDetailId && (
+          <div className="claim-detail">
+            <h4>Claim detail</h4>
+            <dl className="info-grid info-grid--claim">
+              <div>
+                <dt>Number</dt>
+                <dd>{claimDetail.claimNumber}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{claimDetail.status}</dd>
+              </div>
+              <div>
+                <dt>Description</dt>
+                <dd>{claimDetail.lossDescription}</dd>
+              </div>
+              <div>
+                <dt>Paid</dt>
+                <dd>${claimDetail.paidAmount.toFixed(2)}</dd>
+              </div>
+              <div>
+                <dt>Reserve</dt>
+                <dd>${claimDetail.reserveAmount.toFixed(2)}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function Portal() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { view, customerSegment, invalidPath } = useMemo(
+    () => routeFromPath(location.pathname),
+    [location.pathname]
+  );
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [stats, setStats] = useState<PortfolioStats | null>(null);
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [claimDetailId, setClaimDetailId] = useState<string | null>(null);
   const [claimDetail, setClaimDetail] = useState<ClaimDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [statsErr, setStatsErr] = useState<string | null>(null);
-  const [view, setView] = useState<MainView>("customers");
+
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const sidebarScrollIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSidebarScroll = useCallback(() => {
+    const el = sidebarScrollRef.current;
+    if (!el) return;
+    el.classList.add("sidebar-scroll--scrolling");
+    if (sidebarScrollIdleRef.current !== null) clearTimeout(sidebarScrollIdleRef.current);
+    sidebarScrollIdleRef.current = window.setTimeout(() => {
+      el.classList.remove("sidebar-scroll--scrolling");
+      sidebarScrollIdleRef.current = null;
+    }, 650);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (sidebarScrollIdleRef.current !== null) clearTimeout(sidebarScrollIdleRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (invalidPath) navigate("/summary", { replace: true });
+  }, [invalidPath, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,18 +744,22 @@ export function App() {
     };
   }, []);
 
-  const selected = useMemo(
-    () => customers.find((c) => c.systemId === selectedId) ?? null,
-    [customers, selectedId]
+  const selected = useMemo(() => {
+    if (!customerSegment) return null;
+    return customers.find((c) => c.systemId === customerSegment) ?? null;
+  }, [customers, customerSegment]);
+
+  const unknownCustomer = Boolean(
+    customerSegment && !loading && customers.length > 0 && !selected
   );
 
   const customerPolicies = useMemo(() => {
-    if (!selectedId) return [];
-    return policies.filter((p) => p.customerSystemId === selectedId);
-  }, [policies, selectedId]);
+    if (!customerSegment) return [];
+    return policies.filter((p) => p.customerSystemId === customerSegment);
+  }, [policies, customerSegment]);
 
   useEffect(() => {
-    if (!selectedId) {
+    if (!customerSegment) {
       setClaims([]);
       return;
     }
@@ -174,7 +767,7 @@ export function App() {
     (async () => {
       try {
         const res = await getJson<{ claims: ClaimRow[] }>(
-          `/customers/${encodeURIComponent(selectedId)}/claims`
+          `/customers/${encodeURIComponent(customerSegment)}/claims`
         );
         if (!cancelled) setClaims(res.claims);
       } catch {
@@ -184,7 +777,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [customerSegment]);
 
   const loadClaimDetail = useCallback(async (claimSystemId: string) => {
     setClaimDetailId(claimSystemId);
@@ -223,315 +816,76 @@ export function App() {
     [claims]
   );
 
-  const pageTitle = useMemo(() => {
-    if (view === "summary") return "Portfolio summary";
-    if (selected) return selected.displayName;
-    return "Customers";
-  }, [view, selected]);
-
   const selectCustomer = (id: string) => {
-    setView("customers");
-    setSelectedId(id);
+    navigate(`/${encodeURIComponent(id)}`);
     setClaimDetailId(null);
     setClaimDetail(null);
   };
 
   return (
-    <div className="layout">
-      <header className="topbar">
-        <div className="topbar-left">
-          <span className="logo">GWire</span>
-          <span className="tagline">Guidewire InsuranceNow API mockup</span>
-        </div>
-        <div className="topbar-search">
-          <svg
-            className="search-icon"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
-          </svg>
-          <input
-            className="search"
-            type="search"
-            placeholder="Go to — search name, email, phone, policy #, city, county…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search customers"
-          />
-        </div>
-      </header>
+    <div className="app-shell">
+      <TopBar
+        view={view}
+        onHome={() => {
+          navigate("/summary");
+          setClaimDetailId(null);
+          setClaimDetail(null);
+        }}
+        onSummary={() => {
+          navigate("/summary");
+          setClaimDetailId(null);
+          setClaimDetail(null);
+        }}
+      />
 
-      <div className="shell">
-        <aside className="sidebar">
-          <nav className="side-nav" aria-label="Primary">
-            <button
-              type="button"
-              className={view === "summary" ? "nav-item active" : "nav-item"}
-              onClick={() => {
-                setView("summary");
-                setSelectedId(null);
-                setClaimDetailId(null);
-                setClaimDetail(null);
-              }}
-            >
-              Summary
-            </button>
-          </nav>
-          <div className="sidebar-section-title">Customers</div>
-          <div className="sidebar-scroll">
-            {loading && <p className="muted" style={{ padding: "0 0.5rem" }}>Loading…</p>}
-            <ul className="list">
-              {filtered.map((c) => (
-                <li key={c.systemId}>
-                  <button
-                    type="button"
-                    className={
-                      view === "customers" && c.systemId === selectedId ? "row active" : "row"
-                    }
-                    onClick={() => selectCustomer(c.systemId)}
-                  >
-                    <span className="row-text">
-                      <span className="name">{c.displayName}</span>
-                      <span className="meta">{c.address.city}, CA</span>
-                    </span>
-                    {(c.openClaimCount ?? 0) > 0 && (
-                      <span
-                        className="row-open-pill row-open-pill--has"
-                        aria-label={`${c.openClaimCount} open claims`}
-                      >
-                        {c.openClaimCount}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
+      <div className="main-shell">
+        <LeftNav
+          view={view}
+          query={query}
+          onQueryChange={setQuery}
+          customers={filtered}
+          customerSegment={customerSegment}
+          loading={loading}
+          sidebarScrollRef={sidebarScrollRef}
+          onScroll={handleSidebarScroll}
+          onSummary={() => {
+            navigate("/summary");
+            setClaimDetailId(null);
+            setClaimDetail(null);
+          }}
+          onSelectCustomer={selectCustomer}
+        />
 
         <main className="content">
           {err && <div className="banner error">{err}</div>}
-
-          <h1 className="page-title">{pageTitle}</h1>
-
-          {view === "summary" && (
-            <div className="summary-screen">
-              {statsErr && <div className="banner error">{statsErr}</div>}
-              {!stats && !statsErr && loading && (
-                <p className="muted">Loading portfolio stats…</p>
-              )}
-              {stats && (
-                <>
-                  <div className="grid summary-grid">
-                    <section className="panel">
-                      <h2>Claims by status</h2>
-                      <p className="muted small" style={{ marginTop: 0 }}>
-                        Open includes OPEN and PENDING claims.
-                      </p>
-                      <div className="stat-row">
-                        <div className="stat-block">
-                          <div className="stat-value">{stats.claimCounts.open}</div>
-                          <div className="stat-label">Open</div>
-                        </div>
-                        <div className="stat-block">
-                          <div className="stat-value">{stats.claimCounts.closed}</div>
-                          <div className="stat-label">Closed</div>
-                        </div>
-                        <div className="stat-block">
-                          <div className="stat-value">{stats.claimCounts.denied}</div>
-                          <div className="stat-label">Denied</div>
-                        </div>
-                      </div>
-                    </section>
-                    <section className="panel">
-                      <h2>Amounts</h2>
-                      <dl className="dl summary-dl">
-                        <dt>Total paid (all claims)</dt>
-                        <dd>${stats.totalPaidAllClaims.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
-                        <dt>Total on open claims</dt>
-                        <dd>
-                          $
-                          {stats.totalOpenClaimsAmount.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}{" "}
-                          <span className="muted small">(paid + reserve, OPEN / PENDING)</span>
-                        </dd>
-                      </dl>
-                    </section>
-                  </div>
-                  <section className="panel">
-                    <h2>Top 5 cities by customers</h2>
-                    <ol className="top-cities">
-                      {stats.topCitiesByCustomers.map((row) => (
-                        <li key={row.city}>
-                          <span className="top-cities-name">{row.city}</span>
-                          <span className="top-cities-count">{row.customerCount} customers</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
-                </>
-              )}
-            </div>
-          )}
-
-          {view === "customers" && (
-            <>
-              {selected && (
-                <div className="grid" style={{ marginBottom: "1rem" }}>
-                  <section className="panel">
-                    <h2>Overview</h2>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-                        gap: "0.75rem",
-                        textAlign: "center",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{customerPolicies.length}</div>
-                        <div className="muted small">Policies</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{claims.length}</div>
-                        <div className="muted small">Claims</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "1.75rem", fontWeight: 300 }}>{openClaims}</div>
-                        <div className="muted small">Open</div>
-                        <div style={{ marginTop: "0.35rem" }}>
-                          <span
-                            className="pill"
-                            style={{
-                              background: openClaims > 0 ? "var(--status-warn-bg)" : "var(--status-ok-bg)",
-                              color: openClaims > 0 ? "#a04000" : "#1e6091",
-                            }}
-                          >
-                            {openClaims} open
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              <div className="grid">
-                <section className="panel detail">
-                  {!selected && (
-                    <p className="muted">Select a customer to view policies and claims.</p>
-                  )}
-                  {selected && (
-                    <>
-                      <h2>Account</h2>
-                      <dl className="dl">
-                        <dt>ID</dt>
-                        <dd>{selected.systemId}</dd>
-                        <dt>Email</dt>
-                        <dd>{selected.primaryEmail}</dd>
-                        <dt>Phone</dt>
-                        <dd>{selected.primaryPhone}</dd>
-                        <dt>Account</dt>
-                        <dd>{selected.accountNumber}</dd>
-                      </dl>
-
-                      <h3>Mailing address</h3>
-                      <dl className="dl">
-                        <dt>Street</dt>
-                        <dd>{selected.address.addressLine1}</dd>
-                        <dt>City</dt>
-                        <dd>{selected.address.city}</dd>
-                        <dt>County</dt>
-                        <dd>{selected.address.county}</dd>
-                        <dt>State</dt>
-                        <dd>{selected.address.stateProvCd}</dd>
-                        <dt>ZIP</dt>
-                        <dd>{selected.address.postalCode}</dd>
-                        <dt>Country</dt>
-                        <dd>{selected.address.countryCd}</dd>
-                      </dl>
-
-                      <h3>Policies</h3>
-                      <ul className="cards">
-                        {customerPolicies.map((p) => {
-                          const theftDisplay =
-                            p.lineCd === "HOME"
-                              ? p.riskRanks?.theft ?? "IN_REVIEW"
-                              : null;
-                          return (
-                            <li key={p.systemId} className="card">
-                              <div className="card-title">{p.policyNumber}</div>
-                              <div className="card-body">
-                                <span className="pill pill--line">{p.lineCd}</span>
-                                {theftDisplay && (
-                                  <span className={riskPillClass(theftDisplay)}>
-                                    {riskPillLabel("theft", theftDisplay)}
-                                  </span>
-                                )}
-                                <span>{p.status}</span>
-                              </div>
-                              <div className="muted small">
-                                {p.effectiveDt} → {p.expirationDt}
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-
-                      <h3>Claims</h3>
-                      {claims.length === 0 && (
-                        <p className="muted">No claims on file for this customer.</p>
-                      )}
-                      <ul className="claims">
-                        {claims.map((cl) => (
-                          <li key={cl.systemId}>
-                            <button
-                              type="button"
-                              className={cl.systemId === claimDetailId ? "claim open" : "claim"}
-                              onClick={() => void loadClaimDetail(cl.systemId)}
-                            >
-                              <span className="claim-num">{cl.claimNumber}</span>
-                              <span className={claimPillClass(cl.status)}>{cl.status}</span>
-                              <span className="muted">{cl.lossType}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-
-                      {claimDetail && claimDetailId && (
-                        <div className="claim-detail">
-                          <h4>Claim detail</h4>
-                          <dl className="dl">
-                            <dt>Number</dt>
-                            <dd>{claimDetail.claimNumber}</dd>
-                            <dt>Status</dt>
-                            <dd>{claimDetail.status}</dd>
-                            <dt>Description</dt>
-                            <dd>{claimDetail.lossDescription}</dd>
-                            <dt>Paid</dt>
-                            <dd>${claimDetail.paidAmount.toFixed(2)}</dd>
-                            <dt>Reserve</dt>
-                            <dd>${claimDetail.reserveAmount.toFixed(2)}</dd>
-                          </dl>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </section>
-              </div>
-            </>
+          {view === "summary" ? (
+            <SummaryPage stats={stats} loading={loading} statsErr={statsErr} />
+          ) : (
+            <CustomerPage
+              selected={selected}
+              unknownCustomer={unknownCustomer}
+              customerSegment={customerSegment}
+              customerPolicies={customerPolicies}
+              claims={claims}
+              openClaims={openClaims}
+              claimDetailId={claimDetailId}
+              claimDetail={claimDetail}
+              onLoadClaimDetail={loadClaimDetail}
+              onHome={() => navigate("/summary")}
+            />
           )}
         </main>
+
       </div>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/summary" replace />} />
+      <Route path="*" element={<Portal />} />
+    </Routes>
   );
 }

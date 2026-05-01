@@ -1,5 +1,8 @@
 node_modules/
 .DS_Store
+.env
+.env.local
+.env.*.local
 dist/
 gwire/web/dist/
 gwire/server/dist/

@@ -10,42 +10,75 @@ function mulberry32(seed: number) {
   };
 }
 
-const CA_CITIES = [
-  "Los Angeles",
-  "San Diego",
-  "San Jose",
-  "San Francisco",
-  "Fresno",
-  "Sacramento",
-  "Oakland",
-  "Bakersfield",
-  "Anaheim",
-  "Santa Ana",
-  "Riverside",
-  "Stockton",
-  "Irvine",
-  "Chula Vista",
-  "Fremont",
-] as const;
+/**
+ * All 58 California counties with one representative city each (mock mailing addresses).
+ * Sorted alphabetically by county name; customers CUST-00001 … CUST-00058 cover one county each.
+ */
+const CALIFORNIA_COUNTY_SEATS: readonly { readonly county: string; readonly city: string }[] = [
+  { county: "Alameda", city: "Oakland" },
+  { county: "Alpine", city: "Markleeville" },
+  { county: "Amador", city: "Jackson" },
+  { county: "Butte", city: "Chico" },
+  { county: "Calaveras", city: "San Andreas" },
+  { county: "Colusa", city: "Colusa" },
+  { county: "Contra Costa", city: "Concord" },
+  { county: "Del Norte", city: "Crescent City" },
+  { county: "El Dorado", city: "Placerville" },
+  { county: "Fresno", city: "Fresno" },
+  { county: "Glenn", city: "Willows" },
+  { county: "Humboldt", city: "Eureka" },
+  { county: "Imperial", city: "El Centro" },
+  { county: "Inyo", city: "Independence" },
+  { county: "Kern", city: "Bakersfield" },
+  { county: "Kings", city: "Hanford" },
+  { county: "Lake", city: "Lakeport" },
+  { county: "Lassen", city: "Susanville" },
+  { county: "Los Angeles", city: "Los Angeles" },
+  { county: "Madera", city: "Madera" },
+  { county: "Marin", city: "San Rafael" },
+  { county: "Mariposa", city: "Mariposa" },
+  { county: "Mendocino", city: "Ukiah" },
+  { county: "Merced", city: "Merced" },
+  { county: "Modoc", city: "Alturas" },
+  { county: "Mono", city: "Bridgeport" },
+  { county: "Monterey", city: "Salinas" },
+  { county: "Napa", city: "Napa" },
+  { county: "Nevada", city: "Nevada City" },
+  { county: "Orange", city: "Anaheim" },
+  { county: "Placer", city: "Auburn" },
+  { county: "Plumas", city: "Quincy" },
+  { county: "Riverside", city: "Riverside" },
+  { county: "Sacramento", city: "Sacramento" },
+  { county: "San Benito", city: "Hollister" },
+  { county: "San Bernardino", city: "San Bernardino" },
+  { county: "San Diego", city: "San Diego" },
+  { county: "San Francisco", city: "San Francisco" },
+  { county: "San Joaquin", city: "Stockton" },
+  { county: "San Luis Obispo", city: "San Luis Obispo" },
+  { county: "San Mateo", city: "Redwood City" },
+  { county: "Santa Barbara", city: "Santa Barbara" },
+  { county: "Santa Clara", city: "San Jose" },
+  { county: "Santa Cruz", city: "Santa Cruz" },
+  { county: "Shasta", city: "Redding" },
+  { county: "Sierra", city: "Downieville" },
+  { county: "Siskiyou", city: "Yreka" },
+  { county: "Solano", city: "Fairfield" },
+  { county: "Sonoma", city: "Santa Rosa" },
+  { county: "Stanislaus", city: "Modesto" },
+  { county: "Sutter", city: "Yuba City" },
+  { county: "Tehama", city: "Red Bluff" },
+  { county: "Trinity", city: "Weaverville" },
+  { county: "Tulare", city: "Visalia" },
+  { county: "Tuolumne", city: "Sonora" },
+  { county: "Ventura", city: "Ventura" },
+  { county: "Yolo", city: "Woodland" },
+  { county: "Yuba", city: "Marysville" },
+];
 
-/** Primary county for each seeded California city (single-county assignment for mock data). */
-const CA_CITY_TO_COUNTY: Record<(typeof CA_CITIES)[number], string> = {
-  "Los Angeles": "Los Angeles",
-  "San Diego": "San Diego",
-  "San Jose": "Santa Clara",
-  "San Francisco": "San Francisco",
-  "Fresno": "Fresno",
-  "Sacramento": "Sacramento",
-  "Oakland": "Alameda",
-  "Bakersfield": "Kern",
-  Anaheim: "Orange",
-  "Santa Ana": "Orange",
-  Riverside: "Riverside",
-  Stockton: "San Joaquin",
-  Irvine: "Orange",
-  "Chula Vista": "San Diego",
-  Fremont: "Alameda",
-};
+const CALIFORNIA_COUNTY_COUNT = CALIFORNIA_COUNTY_SEATS.length;
+
+/** Canonical list of California county names (58), same order as `CALIFORNIA_COUNTY_SEATS`. */
+export const CALIFORNIA_COUNTIES: readonly string[] = CALIFORNIA_COUNTY_SEATS.map((r) => r.county);
 
 const STREETS = [
   "Oak St",
@@ -98,7 +131,12 @@ export function buildMockStore(seed = 42): MockStore {
     const systemId = `CUST-${String(i).padStart(5, "0")}`;
     const fn = FIRST[Math.floor(rnd() * FIRST.length)]!;
     const ln = LAST[Math.floor(rnd() * LAST.length)]!;
-    const city = CA_CITIES[Math.floor(rnd() * CA_CITIES.length)]!;
+    // Always consume one PRNG draw for "city/county pick" so downstream fields (claims, etc.)
+    // match the historical mulberry32 stream for this seed.
+    const { county, city } =
+      i <= CALIFORNIA_COUNTY_COUNT
+        ? (rnd(), CALIFORNIA_COUNTY_SEATS[i - 1]!)
+        : CALIFORNIA_COUNTY_SEATS[Math.floor(rnd() * CALIFORNIA_COUNTY_COUNT)]!;
     const street = STREETS[Math.floor(rnd() * STREETS.length)]!;
     const num = 100 + Math.floor(rnd() * 9000);
     const zip = String(90000 + i);
@@ -106,7 +144,7 @@ export function buildMockStore(seed = 42): MockStore {
     const address: Address = {
       addressLine1: `${num} ${street}`,
       city,
-      county: CA_CITY_TO_COUNTY[city],
+      county,
       stateProvCd: "CA",
       postalCode: zip,
       countryCd: "US",

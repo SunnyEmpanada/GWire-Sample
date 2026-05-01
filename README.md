@@ -13,6 +13,15 @@ npm install
 npm run dev
 ```
 
+For optional Supabase-backed risk persistence, copy [`.env.example`](.env.example) to `.env`, fill in the server-only Supabase values, and load it into your shell before starting the app. The app does not auto-load `.env`; the variables must be present in the server process environment.
+
+```bash
+cp .env.example .env
+# edit .env, then:
+set -a; source .env; set +a
+npm run dev
+```
+
 **Local dev endpoints (fixed):**
 
 | | URL |
@@ -50,6 +59,8 @@ GWire exposes two groups of endpoints:
   - `DELETE /riskRankings/{category}` — clear one category across all policies.
 
 Extensions are tagged `GWire Extensions (non-InsuranceNow)` in the OpenAPI spec, live under a clearly labeled section in [`gwire/server/src/app.ts`](gwire/server/src/app.ts), and their supporting logic lives in [`gwire/server/src/domain/extensions/`](gwire/server/src/domain/extensions/).
+
+To persist risk rankings across server restarts or Vercel serverless instances, see [`docs/supabase-risk-persistence.md`](docs/supabase-risk-persistence.md).
 
 ## Mock data
 

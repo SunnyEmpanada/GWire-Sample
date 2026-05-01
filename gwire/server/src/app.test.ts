@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "./app.js";
+import type { MockStore, RiskCategory, RiskRank } from "./domain/types.js";
+import type { RiskPersistence } from "./domain/extensions/riskPersistence.js";
+
+process.env.RISK_PERSISTENCE = "memory";
 
 test("GET /customers returns JSON list", async () => {
   const app = await createApp();
@@ -93,6 +97,40 @@ type PolicyWithRisk = {
   };
 };
 
+class FakeRiskPersistence implements RiskPersistence {
+  readonly mode = "supabase";
+  initialized = false;
+  upserted: Array<{ policySystemId: string; category: RiskCategory; rank: RiskRank }> = [];
+  bulkUpserted: Array<{ policySystemId: string; category: RiskCategory; rank: RiskRank }> = [];
+  clearAllCount = 0;
+  clearedCategories: RiskCategory[] = [];
+  failNextUpsert = false;
+
+  async initialize(_store: MockStore): Promise<void> {
+    this.initialized = true;
+  }
+
+  async upsertRank(policySystemId: string, category: RiskCategory, rank: RiskRank): Promise<void> {
+    if (this.failNextUpsert) {
+      this.failNextUpsert = false;
+      throw new Error("supabase unavailable");
+    }
+    this.upserted.push({ policySystemId, category, rank });
+  }
+
+  async upsertRanks(rows: Array<{ policySystemId: string; category: RiskCategory; rank: RiskRank }>): Promise<void> {
+    this.bulkUpserted.push(...rows);
+  }
+
+  async clearAll(): Promise<void> {
+    this.clearAllCount += 1;
+  }
+
+  async clearCategory(category: RiskCategory): Promise<void> {
+    this.clearedCategories.push(category);
+  }
+}
+
 /** Wipe the in-memory rank store so each test starts clean (store is a singleton). */
 async function resetRisk(app: Awaited<ReturnType<typeof createApp>>) {
   await app.inject({ method: "DELETE", url: "/riskRankings" });
@@ -120,6 +158,41 @@ test("POST /policies/:id/riskRanking defaults category to THEFT", async () => {
   assert.equal(body.rank, "LOW");
   const p = await getPolicy(app, "POL-00001");
   assert.equal(p.riskRanks.theft, "LOW");
+  assert.equal(p.riskRanks.fire, null);
+  await app.close();
+});
+
+test("risk persistence is initialized and receives write-through updates", async () => {
+  const riskPersistence = new FakeRiskPersistence();
+  const app = await createApp({ riskPersistence });
+  await resetRisk(app);
+  const res = await app.inject({
+    method: "POST",
+    url: "/policies/POL-00001/riskRanking",
+    payload: { rank: "HIGH", category: "FIRE" },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(riskPersistence.initialized, true);
+  assert.deepEqual(riskPersistence.upserted, [
+    { policySystemId: "POL-00001", category: "FIRE", rank: "HIGH" },
+  ]);
+  const p = await getPolicy(app, "POL-00001");
+  assert.equal(p.riskRanks.fire, "HIGH");
+  await app.close();
+});
+
+test("risk persistence failure does not update the read cache", async () => {
+  const riskPersistence = new FakeRiskPersistence();
+  const app = await createApp({ riskPersistence });
+  await resetRisk(app);
+  riskPersistence.failNextUpsert = true;
+  const res = await app.inject({
+    method: "POST",
+    url: "/policies/POL-00001/riskRanking",
+    payload: { rank: "HIGH", category: "FIRE" },
+  });
+  assert.equal(res.statusCode, 503);
+  const p = await getPolicy(app, "POL-00001");
   assert.equal(p.riskRanks.fire, null);
   await app.close();
 });
