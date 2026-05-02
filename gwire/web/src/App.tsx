@@ -239,6 +239,7 @@ function TopBar({
             className={item.active ? "product-nav-item active" : "product-nav-item"}
             onClick={item.onClick}
             disabled={!item.onClick}
+            aria-current={item.active ? "page" : undefined}
           >
             {item.label}
           </button>
@@ -307,6 +308,12 @@ function LeftNav({
       <div className="sidebar-section-title">Customers</div>
       <div ref={sidebarScrollRef} className="sidebar-scroll" onScroll={onScroll}>
         {loading && <p className="muted rail-loading">Loading...</p>}
+        {!loading && customers.length === 0 && (
+          <div className="rail-empty">
+            <strong>No matches</strong>
+            <span>Try customer name, city, county, policy number, email, or phone.</span>
+          </div>
+        )}
         <ul className="list">
           {customers.map((c) => (
             <li key={c.systemId}>
