@@ -402,7 +402,7 @@ function TopBar({
 
   return (
     <header className="app-header">
-      <div className="brand">
+      <div className="brand" title="Guidewire InsuranceNow-style claim system">
         <button type="button" className="brand-mark" onClick={onHome} aria-label="Home - portfolio summary">
           <img className="brand-icon" src="/assets/icon.png" alt="" aria-hidden="true" />
           <span className="brand-guidewire">GUIDEWIRE</span>
