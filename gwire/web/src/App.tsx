@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode, RefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { geoMercator, geoPath } from "d3-geo";
+import { feature } from "topojson-client";
 import { getJson } from "./api";
 
 type Customer = {
@@ -113,6 +115,25 @@ function riskPillClass(display: string): string {
 type RiskCategoryKey = "theft" | "fire" | "flood" | "earthquake";
 
 type RiskRankValue = "LOW" | "MEDIUM" | "HIGH";
+type RiskDisplay = RiskRankValue | "IN_REVIEW";
+
+type CountyRiskSnapshot = {
+  countyFips: string;
+  countyName: string;
+  customerCount: number;
+  policyCount: number;
+  risks: Record<RiskCategoryKey, RiskDisplay>;
+  intensity: number;
+};
+
+type CountyShape = {
+  countyFips: string;
+  pathD: string;
+};
+
+type StateShape = {
+  pathD: string;
+};
 
 const RISK_OVERVIEW_ROWS: { key: RiskCategoryKey; label: string }[] = [
   { key: "theft", label: "Theft" },
@@ -120,6 +141,71 @@ const RISK_OVERVIEW_ROWS: { key: RiskCategoryKey; label: string }[] = [
   { key: "flood", label: "Flood" },
   { key: "earthquake", label: "Earthquake" },
 ];
+
+const CA_COUNTY_FIPS_TO_NAME: Record<string, string> = {
+  "06001": "Alameda",
+  "06003": "Alpine",
+  "06005": "Amador",
+  "06007": "Butte",
+  "06009": "Calaveras",
+  "06011": "Colusa",
+  "06013": "Contra Costa",
+  "06015": "Del Norte",
+  "06017": "El Dorado",
+  "06019": "Fresno",
+  "06021": "Glenn",
+  "06023": "Humboldt",
+  "06025": "Imperial",
+  "06027": "Inyo",
+  "06029": "Kern",
+  "06031": "Kings",
+  "06033": "Lake",
+  "06035": "Lassen",
+  "06037": "Los Angeles",
+  "06039": "Madera",
+  "06041": "Marin",
+  "06043": "Mariposa",
+  "06045": "Mendocino",
+  "06047": "Merced",
+  "06049": "Modoc",
+  "06051": "Mono",
+  "06053": "Monterey",
+  "06055": "Napa",
+  "06057": "Nevada",
+  "06059": "Orange",
+  "06061": "Placer",
+  "06063": "Plumas",
+  "06065": "Riverside",
+  "06067": "Sacramento",
+  "06069": "San Benito",
+  "06071": "San Bernardino",
+  "06073": "San Diego",
+  "06075": "San Francisco",
+  "06077": "San Joaquin",
+  "06079": "San Luis Obispo",
+  "06081": "San Mateo",
+  "06083": "Santa Barbara",
+  "06085": "Santa Clara",
+  "06087": "Santa Cruz",
+  "06089": "Shasta",
+  "06091": "Sierra",
+  "06093": "Siskiyou",
+  "06095": "Solano",
+  "06097": "Sonoma",
+  "06099": "Stanislaus",
+  "06101": "Sutter",
+  "06103": "Tehama",
+  "06105": "Trinity",
+  "06107": "Tulare",
+  "06109": "Tuolumne",
+  "06111": "Ventura",
+  "06113": "Yolo",
+  "06115": "Yuba",
+};
+
+const COUNTY_NAME_TO_FIPS = Object.fromEntries(
+  Object.entries(CA_COUNTY_FIPS_TO_NAME).map(([fips, county]) => [county.toLowerCase(), fips])
+) as Record<string, string>;
 
 /** Highest severity wins when multiple policies differ. */
 function worstRankAcrossPolicies(policies: Policy[], category: RiskCategoryKey): RiskRankValue | null {
@@ -132,6 +218,98 @@ function worstRankAcrossPolicies(policies: Policy[], category: RiskCategoryKey):
     }
   }
   return best;
+}
+
+function riskRankToValue(rank: RiskRankValue): number {
+  if (rank === "LOW") return 1;
+  if (rank === "MEDIUM") return 2;
+  return 3;
+}
+
+function riskDisplayToText(display: RiskDisplay): string {
+  return display === "IN_REVIEW" ? "In review" : display;
+}
+
+function mixHexColor(a: string, b: string, t: number): string {
+  const safeT = Math.max(0, Math.min(1, t));
+  const parse = (v: string) => parseInt(v, 16);
+  const ar = parse(a.slice(1, 3));
+  const ag = parse(a.slice(3, 5));
+  const ab = parse(a.slice(5, 7));
+  const br = parse(b.slice(1, 3));
+  const bg = parse(b.slice(3, 5));
+  const bb = parse(b.slice(5, 7));
+  const r = Math.round(ar + (br - ar) * safeT);
+  const g = Math.round(ag + (bg - ag) * safeT);
+  const bOut = Math.round(ab + (bb - ab) * safeT);
+  return `rgb(${r}, ${g}, ${bOut})`;
+}
+
+function countyRiskColor(intensity: number): string {
+  const safe = Math.max(0, Math.min(1, intensity));
+  if (safe <= 0.5) {
+    return mixHexColor("#ffffff", "#f5d55e", safe / 0.5);
+  }
+  return mixHexColor("#f5d55e", "#d94a3a", (safe - 0.5) / 0.5);
+}
+
+function summarizeCountyRisk(customers: Customer[], policies: Policy[]): Record<string, CountyRiskSnapshot> {
+  const policiesByCustomerId = new Map<string, Policy[]>();
+  for (const p of policies) {
+    const list = policiesByCustomerId.get(p.customerSystemId);
+    if (list) list.push(p);
+    else policiesByCustomerId.set(p.customerSystemId, [p]);
+  }
+
+  const countsByFips = new Map<string, number>();
+  const countyPolicies = new Map<string, Policy[]>();
+
+  for (const c of customers) {
+    const countyKey = c.address.county.trim().toLowerCase();
+    const countyFips = COUNTY_NAME_TO_FIPS[countyKey];
+    if (!countyFips) continue;
+
+    countsByFips.set(countyFips, (countsByFips.get(countyFips) ?? 0) + 1);
+    const customerPolicies = policiesByCustomerId.get(c.systemId) ?? [];
+    if (customerPolicies.length > 0) {
+      const list = countyPolicies.get(countyFips);
+      if (list) list.push(...customerPolicies);
+      else countyPolicies.set(countyFips, [...customerPolicies]);
+    }
+  }
+
+  const maxCustomerCount = Math.max(1, ...countsByFips.values());
+  const snapshots: Record<string, CountyRiskSnapshot> = {};
+
+  for (const [countyFips, countyName] of Object.entries(CA_COUNTY_FIPS_TO_NAME)) {
+    const countyPolicyList = countyPolicies.get(countyFips) ?? [];
+    const risks = Object.fromEntries(
+      RISK_OVERVIEW_ROWS.map(({ key }) => {
+        const rank = worstRankAcrossPolicies(countyPolicyList, key);
+        return [key, rank ?? "IN_REVIEW"];
+      })
+    ) as Record<RiskCategoryKey, RiskDisplay>;
+
+    const knownRiskValues = Object.values(risks)
+      .filter((value): value is RiskRankValue => value !== "IN_REVIEW")
+      .map((rank) => riskRankToValue(rank));
+
+    const riskIntensity =
+      knownRiskValues.length > 0 ? knownRiskValues.reduce((sum, value) => sum + value, 0) / (knownRiskValues.length * 3) : 0;
+    const customerIntensity = (countsByFips.get(countyFips) ?? 0) / maxCustomerCount;
+    const intensity = Math.min(1, riskIntensity * 0.75 + customerIntensity * 0.25);
+
+    snapshots[countyFips] = {
+      countyFips,
+      countyName,
+      customerCount: countsByFips.get(countyFips) ?? 0,
+      policyCount: countyPolicyList.length,
+      risks,
+      intensity,
+    };
+  }
+
+  return snapshots;
 }
 
 const RISK_CATEGORY_PILL_PREFIX: Record<RiskCategoryKey, string> = {
@@ -409,14 +587,160 @@ function EntityHeader({
   );
 }
 
+function CaliforniaRiskMap({ customers, policies }: { customers: Customer[]; policies: Policy[] }) {
+  const [countyShapes, setCountyShapes] = useState<CountyShape[]>([]);
+  const [stateShape, setStateShape] = useState<StateShape | null>(null);
+  const [mapLoadError, setMapLoadError] = useState<string | null>(null);
+  const [hoveredCountyFips, setHoveredCountyFips] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+  const mapWrapRef = useRef<HTMLDivElement>(null);
+  const countyStats = useMemo(() => summarizeCountyRisk(customers, policies), [customers, policies]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setMapLoadError(null);
+        const response = await fetch("/assets/counties-10m.json");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const topology = (await response.json()) as {
+          objects: { counties: unknown; states: unknown };
+        };
+
+        const counties = feature(topology as never, topology.objects.counties as never) as {
+          features: Array<{ id: string | number }>;
+        };
+        const caFeatures = counties.features.filter((county) =>
+          String(county.id).padStart(5, "0").startsWith("06")
+        );
+
+        const projection = geoMercator();
+        projection.fitSize([670, 780], {
+          type: "FeatureCollection",
+          features: caFeatures,
+        } as never);
+        const pathBuilder = geoPath(projection);
+
+        const shapes = caFeatures
+          .map((county) => {
+            const countyFips = String(county.id).padStart(5, "0");
+            const pathD = pathBuilder(county as never);
+            if (!pathD) return null;
+            return { countyFips, pathD };
+          })
+          .filter((shape): shape is CountyShape => Boolean(shape));
+
+        const states = feature(topology as never, topology.objects.states as never) as {
+          features: Array<{ id: string | number }>;
+        };
+        const californiaState = states.features.find((state) => String(state.id).padStart(2, "0") === "06");
+        const statePathD = californiaState ? pathBuilder(californiaState as never) : null;
+
+        if (!cancelled) {
+          setCountyShapes(shapes);
+          setStateShape(statePathD ? { pathD: statePathD } : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setMapLoadError("County map could not be loaded.");
+          setCountyShapes([]);
+          setStateShape(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hoveredSnapshot = hoveredCountyFips ? countyStats[hoveredCountyFips] : null;
+
+  const handleMouseMove = useCallback((event: ReactMouseEvent<SVGPathElement>) => {
+    const wrap = mapWrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    setTooltipPosition({
+      x: event.clientX - rect.left + 14,
+      y: event.clientY - rect.top + 14,
+    });
+  }, []);
+
+  return (
+    <div className="county-map-wrap" ref={mapWrapRef}>
+      <div className="county-map-legend" aria-hidden>
+        <span>Lower risk</span>
+        <span className="county-map-legend-gradient" />
+        <span>Higher risk + more customers</span>
+      </div>
+      {mapLoadError && <p className="muted">{mapLoadError}</p>}
+      {!mapLoadError && countyShapes.length === 0 && <p className="muted">Loading county map…</p>}
+      {!mapLoadError && countyShapes.length > 0 && (
+        <svg
+          className="county-map-svg"
+          viewBox="0 0 670 780"
+          role="img"
+          aria-label="California county risk map"
+          onMouseLeave={() => {
+            setHoveredCountyFips(null);
+            setTooltipPosition(null);
+          }}
+        >
+          {countyShapes.map((shape) => {
+            const snapshot = countyStats[shape.countyFips];
+            const fill = countyRiskColor(snapshot?.intensity ?? 0);
+            return (
+              <path
+                key={shape.countyFips}
+                d={shape.pathD}
+                className={hoveredCountyFips === shape.countyFips ? "county-path county-path--active" : "county-path"}
+                fill={fill}
+                onMouseEnter={() => setHoveredCountyFips(shape.countyFips)}
+                onMouseMove={handleMouseMove}
+              />
+            );
+          })}
+          {stateShape && <path d={stateShape.pathD} className="state-outline-path" fill="none" />}
+        </svg>
+      )}
+      {hoveredSnapshot && tooltipPosition && (
+        <aside
+          className="county-tooltip"
+          style={{
+            left: `${tooltipPosition.x}px`,
+            top: `${tooltipPosition.y}px`,
+          }}
+        >
+          <h4>{hoveredSnapshot.countyName}</h4>
+          <div className="county-tooltip-counts">
+            <span>{hoveredSnapshot.customerCount} customers</span>
+            <span>{hoveredSnapshot.policyCount} policies</span>
+          </div>
+          <ul>
+            {RISK_OVERVIEW_ROWS.map(({ key, label }) => (
+              <li key={key}>
+                <span>{label}</span>
+                <strong>{riskDisplayToText(hoveredSnapshot.risks[key])}</strong>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
+    </div>
+  );
+}
+
 function SummaryPage({
   stats,
   loading,
   statsErr,
+  customers,
+  policies,
 }: {
   stats: PortfolioStats | null;
   loading: boolean;
   statsErr: string | null;
+  customers: Customer[];
+  policies: Policy[];
 }) {
   return (
     <div className="page-stack summary-screen">
@@ -453,15 +777,11 @@ function SummaryPage({
               </dl>
             </Panel>
           </div>
-          <Panel title="Top 5 cities by customers" eyebrow="Distribution" className="cities-panel">
-            <ol className="top-cities">
-              {stats.topCitiesByCustomers.map((row) => (
-                <li key={row.city}>
-                  <span className="top-cities-name">{row.city}</span>
-                  <span className="top-cities-count">{row.customerCount} customers</span>
-                </li>
-              ))}
-            </ol>
+          <Panel title="California county risk heatmap" eyebrow="Distribution" className="county-map-panel">
+            <p className="muted small panel-note">
+              County color blends cumulative risk severity and customer concentration.
+            </p>
+            <CaliforniaRiskMap customers={customers} policies={policies} />
           </Panel>
         </>
       )}
@@ -866,7 +1186,13 @@ function Portal() {
         <main className="content">
           {err && <div className="banner error">{err}</div>}
           {view === "summary" ? (
-            <SummaryPage stats={stats} loading={loading} statsErr={statsErr} />
+            <SummaryPage
+              stats={stats}
+              loading={loading}
+              statsErr={statsErr}
+              customers={customers}
+              policies={policies}
+            />
           ) : (
             <CustomerPage
               selected={selected}

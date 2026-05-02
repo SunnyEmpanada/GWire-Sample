@@ -1410,6 +1410,115 @@ body {
   margin-top: 0.9rem;
 }
 
+.county-map-panel {
+  margin-top: 0.9rem;
+}
+
+.county-map-wrap {
+  position: relative;
+}
+
+.county-map-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+  color: #6f8086;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.county-map-legend-gradient {
+  width: 7rem;
+  height: 0.62rem;
+  border-radius: 999px;
+  border: 1px solid #d9e2e5;
+  background: linear-gradient(90deg, #ffffff 0%, #f5d55e 52%, #d94a3a 100%);
+}
+
+.county-map-svg {
+  display: block;
+  width: 100%;
+  max-width: 34rem;
+  height: auto;
+  border: 1px solid #dbe4e8;
+  background: #fbfcfc;
+}
+
+.county-path {
+  stroke: #a8b6bc;
+  stroke-width: 1.2;
+  transition: fill 260ms ease, stroke 180ms ease, filter 180ms ease;
+}
+
+.county-path:hover,
+.county-path--active {
+  stroke: #5e7179;
+  stroke-width: 1.35;
+  filter: brightness(0.98);
+}
+
+.state-outline-path {
+  stroke: #52666e;
+  stroke-width: 2.2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.county-tooltip {
+  position: absolute;
+  z-index: 3;
+  width: min(18rem, calc(100% - 1rem));
+  border: 1px solid #c8d8de;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 14px rgba(41, 62, 70, 0.18);
+  padding: 0.52rem 0.58rem;
+  pointer-events: none;
+}
+
+.county-tooltip h4 {
+  margin: 0;
+  color: #35505a;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.county-tooltip-counts {
+  margin-top: 0.3rem;
+  display: flex;
+  gap: 0.4rem;
+  color: #5b6f76;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.county-tooltip ul {
+  list-style: none;
+  margin: 0.46rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.county-tooltip li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  color: #4d6168;
+  font-size: 0.72rem;
+  border-top: 1px solid #edf2f4;
+  padding-top: 0.25rem;
+}
+
+.county-tooltip li strong {
+  color: #2f454d;
+}
+
 .top-cities {
   margin: 0;
   padding: 0;
