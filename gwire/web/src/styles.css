@@ -1044,6 +1044,12 @@ body {
   font-size: 0.72rem;
 }
 
+/* Open-claim count: readable blue on the tinted fill without heavy contrast. */
+.left-rail .row-open-pill--has {
+  color: #58a7c4;
+  box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.22);
+}
+
 .right-action-rail {
   width: 46px;
   flex-shrink: 0;
