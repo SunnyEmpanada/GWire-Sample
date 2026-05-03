@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { geoMercator, geoPath } from "d3-geo";
@@ -587,13 +587,145 @@ function EntityHeader({
   );
 }
 
+const COUNTY_TOOLTIP_CURSOR_GAP = 12;
+const COUNTY_TOOLTIP_CURSOR_PAD = 8;
+
+function clampTooltipToViewport(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  vw: number,
+  vh: number,
+  pad: number
+): { left: number; top: number } {
+  return {
+    left: Math.min(Math.max(pad, left), Math.max(pad, vw - width - pad)),
+    top: Math.min(Math.max(pad, top), Math.max(pad, vh - height - pad)),
+  };
+}
+
+function countyTooltipOverlapsCursor(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  cursorPad: number
+): boolean {
+  return !(
+    left > cx + cursorPad ||
+    left + width < cx - cursorPad ||
+    top > cy + cursorPad ||
+    top + height < cy - cursorPad
+  );
+}
+
+/** True when the tooltip bottom sits on (or is clamped against) the usable viewport bottom. */
+function tooltipBottomTouchesViewportBottom(
+  top: number,
+  height: number,
+  vh: number,
+  pad: number,
+  epsilon = 2
+): boolean {
+  return top + height >= vh - pad - epsilon;
+}
+
+/** True when the tooltip right edge sits on (or is clamped against) the usable viewport right. */
+function tooltipRightTouchesViewportRight(
+  left: number,
+  width: number,
+  vw: number,
+  pad: number,
+  epsilon = 2
+): boolean {
+  return left + width >= vw - pad - epsilon;
+}
+
+/**
+ * Right-side tooltip first; if the right edge clamps to the viewport, use the left side instead.
+ * On the left, if the bottom edge clamps to the viewport, use left-top. Right-center bottom flush
+ * uses right-top before falling back to the left chain. Keeps the cursor over the county when possible.
+ */
+function computeCountyTooltipPosition(
+  cx: number,
+  cy: number,
+  width: number,
+  height: number,
+  vw: number,
+  vh: number,
+  pad: number,
+  gap: number
+): { left: number; top: number } {
+  const g = gap;
+  const edgeEps = 2;
+
+  const overlaps = (left: number, top: number) =>
+    countyTooltipOverlapsCursor(
+      left,
+      top,
+      width,
+      height,
+      cx,
+      cy,
+      COUNTY_TOOLTIP_CURSOR_PAD
+    );
+
+  const clamp = (left: number, top: number) =>
+    clampTooltipToViewport(left, top, width, height, vw, vh, pad);
+
+  const rightFlush = (left: number) =>
+    tooltipRightTouchesViewportRight(left, width, vw, pad, edgeEps);
+  const bottomFlush = (top: number) =>
+    tooltipBottomTouchesViewportBottom(top, height, vh, pad, edgeEps);
+
+  const tryLeftSide = (): { left: number; top: number } | null => {
+    const lc = clamp(cx - g - width, cy - height / 2);
+    if (!overlaps(lc.left, lc.top) && !bottomFlush(lc.top)) return lc;
+    const lt = clamp(cx - g - width, cy - g - height);
+    if (!overlaps(lt.left, lt.top)) return lt;
+    if (!overlaps(lc.left, lc.top)) return lc;
+    return null;
+  };
+
+  const rc = clamp(cx + g, cy - height / 2);
+  if (!overlaps(rc.left, rc.top)) {
+    if (rightFlush(rc.left)) {
+      const placed = tryLeftSide();
+      if (placed) return placed;
+    } else if (bottomFlush(rc.top)) {
+      const rt = clamp(cx + g, cy - g - height);
+      if (!overlaps(rt.left, rt.top) && !rightFlush(rt.left)) return rt;
+      const placed = tryLeftSide();
+      if (placed) return placed;
+    } else {
+      return rc;
+    }
+  } else {
+    const rt = clamp(cx + g, cy - g - height);
+    if (!overlaps(rt.left, rt.top) && !rightFlush(rt.left)) return rt;
+    const placed = tryLeftSide();
+    if (placed) return placed;
+  }
+
+  const placed = tryLeftSide();
+  if (placed) return placed;
+
+  return clamp(cx + g, cy - height / 2);
+}
+
 function CaliforniaRiskMap({ customers, policies }: { customers: Customer[]; policies: Policy[] }) {
   const [countyShapes, setCountyShapes] = useState<CountyShape[]>([]);
   const [stateShape, setStateShape] = useState<StateShape | null>(null);
   const [mapLoadError, setMapLoadError] = useState<string | null>(null);
   const [hoveredCountyFips, setHoveredCountyFips] = useState<string | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
-  const mapWrapRef = useRef<HTMLDivElement>(null);
+  /** Pointer in viewport coordinates (for fixed tooltip clamping). */
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ cx: number; cy: number } | null>(null);
+  const [tooltipFixed, setTooltipFixed] = useState<{ left: number; top: number } | null>(null);
+  const [reclampTick, bumpReclamp] = useReducer((n: number) => n + 1, 0);
+  const tooltipRef = useRef<HTMLElement>(null);
   const countyStats = useMemo(() => summarizeCountyRisk(customers, policies), [customers, policies]);
 
   useEffect(() => {
@@ -655,18 +787,44 @@ function CaliforniaRiskMap({ customers, policies }: { customers: Customer[]; pol
 
   const hoveredSnapshot = hoveredCountyFips ? countyStats[hoveredCountyFips] : null;
 
+  useLayoutEffect(() => {
+    if (!hoveredSnapshot || !tooltipAnchor) {
+      setTooltipFixed(null);
+      return;
+    }
+    const el = tooltipRef.current;
+    const pad = 10;
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    const { cx, cy } = tooltipAnchor;
+    if (el) {
+      const { width, height } = el.getBoundingClientRect();
+      const pos = computeCountyTooltipPosition(cx, cy, width, height, vw, vh, pad, COUNTY_TOOLTIP_CURSOR_GAP);
+      setTooltipFixed(pos);
+    } else {
+      const estW = Math.min(288, vw - 2 * pad);
+      const estH = 180;
+      setTooltipFixed(computeCountyTooltipPosition(cx, cy, estW, estH, vw, vh, pad, COUNTY_TOOLTIP_CURSOR_GAP));
+    }
+  }, [hoveredSnapshot, tooltipAnchor, reclampTick]);
+
+  useEffect(() => {
+    if (!hoveredCountyFips) return;
+    const onViewportChange = () => bumpReclamp();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [hoveredCountyFips]);
+
   const handleMouseMove = useCallback((event: ReactMouseEvent<SVGPathElement>) => {
-    const wrap = mapWrapRef.current;
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    setTooltipPosition({
-      x: event.clientX - rect.left + 14,
-      y: event.clientY - rect.top + 14,
-    });
+    setTooltipAnchor({ cx: event.clientX, cy: event.clientY });
   }, []);
 
   return (
-    <div className="county-map-wrap" ref={mapWrapRef}>
+    <div className="county-map-wrap">
       <div className="county-map-legend" aria-hidden>
         <span>Lower risk</span>
         <span className="county-map-legend-gradient" />
@@ -682,7 +840,8 @@ function CaliforniaRiskMap({ customers, policies }: { customers: Customer[]; pol
           aria-label="California county risk map"
           onMouseLeave={() => {
             setHoveredCountyFips(null);
-            setTooltipPosition(null);
+            setTooltipAnchor(null);
+            setTooltipFixed(null);
           }}
         >
           {countyShapes.map((shape) => {
@@ -694,7 +853,10 @@ function CaliforniaRiskMap({ customers, policies }: { customers: Customer[]; pol
                 d={shape.pathD}
                 className={hoveredCountyFips === shape.countyFips ? "county-path county-path--active" : "county-path"}
                 fill={fill}
-                onMouseEnter={() => setHoveredCountyFips(shape.countyFips)}
+                onMouseEnter={(e) => {
+                  setHoveredCountyFips(shape.countyFips);
+                  setTooltipAnchor({ cx: e.clientX, cy: e.clientY });
+                }}
                 onMouseMove={handleMouseMove}
               />
             );
@@ -702,12 +864,13 @@ function CaliforniaRiskMap({ customers, policies }: { customers: Customer[]; pol
           {stateShape && <path d={stateShape.pathD} className="state-outline-path" fill="none" />}
         </svg>
       )}
-      {hoveredSnapshot && tooltipPosition && (
+      {hoveredSnapshot && tooltipFixed && (
         <aside
+          ref={tooltipRef}
           className="county-tooltip"
           style={{
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`,
+            left: `${tooltipFixed.left}px`,
+            top: `${tooltipFixed.top}px`,
           }}
         >
           <h4>{hoveredSnapshot.countyName}</h4>
