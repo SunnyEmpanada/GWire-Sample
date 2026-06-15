@@ -317,9 +317,7 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
   // GET /submissions/demo — returns pre-filled form data for demo purposes.
   // Queries primary Supabase (CUSTOMERS + LIFE_POLICIES) for real SSN, DOB, and policy number.
   // Falls back to deterministic in-memory formulas if DB credentials are unavailable.
-  // Query param: mode=correct (default) | incorrect  (incorrect corrupts ssnLast4)
-  app.get("/submissions/demo", async (req, reply) => {
-    const mode = (req.query as { mode?: string }).mode ?? "correct";
+  app.get("/submissions/demo", async (_req, reply) => {
     const pad = (n: number, len: number) => String(n).padStart(len, "0");
     const REL_MAP: Record<string, string> = {
       SPOUSE: "Spouse", CHILD: "Child", PARENT: "Family Member",
@@ -353,10 +351,7 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
 
       if (!custErr && !polErr && cust && pol) {
         const [dobYear, dobMonthRaw, dobDayRaw] = (cust.date_of_birth as string).split("-");
-        // SSN stored as "AAA-GG-SSSS" — last 4 chars are the serial
         const ssnLast4 = (cust.ssn as string).slice(-4);
-        const ssnSerial = parseInt(ssnLast4, 10);
-        const ssnWrong = pad(((ssnSerial - 1000 + 1111) % 9000) + 1000, 4);
 
         const [polFirst, ...polLastParts] = (cust.display_name as string).split(" ");
         const polLast = polLastParts.join(" ");
@@ -370,7 +365,7 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
           dobMonth:      String(parseInt(dobMonthRaw ?? "1", 10)),
           dobDay:        String(parseInt(dobDayRaw ?? "1", 10)),
           dobYear:       dobYear ?? "",
-          ssnLast4:      mode === "incorrect" ? ssnWrong : ssnLast4,
+          ssnLast4,
           policyNumber:  pol.policy_number as string,
           relationship:  REL_MAP[pol.beneficiary_relationship as string] ?? "Family Member",
           firstName:     beneFirst ?? "",
@@ -395,9 +390,7 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
     const dobYear  = 1961 + ((i * 13) % 41);
     const dobMonth = ((i * 7)  % 12) + 1;
     const dobDay   = ((i * 11) % 28) + 1;
-    const ssnSerial  = 1000 + ((i * 331) % 9000);
-    const ssnCorrect = pad(ssnSerial, 4);
-    const ssnWrong   = pad(((ssnSerial - 1000 + 1111) % 9000) + 1000, 4);
+    const ssnLast4 = pad(1000 + ((i * 331) % 9000), 4);
 
     const BENE_FIRST_FB = ["Sarah","Michael","Jennifer","David","Lisa","Robert","Michelle","James","Patricia","William"];
     const BENE_RELS_FB  = ["SPOUSE","CHILD","PARENT","SIBLING","ESTATE"];
@@ -410,7 +403,7 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
       polLastName:   custLastName,
       deathMonth:    "6", deathDay: "15", deathYear: "2024",
       dobMonth:      String(dobMonth), dobDay: String(dobDay), dobYear: String(dobYear),
-      ssnLast4:      mode === "incorrect" ? ssnWrong : ssnCorrect,
+      ssnLast4,
       policyNumber:  `PN-LIFE-CA-${pad(i, 5)}`,
       relationship:  REL_MAP[beneRel] ?? "Family Member",
       firstName:     beneFirst,

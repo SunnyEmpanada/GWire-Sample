@@ -1598,9 +1598,9 @@ function ReportADeathPage() {
     });
   }
 
-  async function handleDemoFill(mode: "correct" | "incorrect") {
+  async function handleDemoFill() {
     try {
-      const res = await fetch(`/submissions/demo?mode=${mode}`);
+      const res = await fetch("/submissions/demo");
       if (!res.ok) return;
       const d = await res.json() as {
         polFirstName?: string; polLastName?: string;
@@ -1686,8 +1686,7 @@ function ReportADeathPage() {
           <h1 className="rad-page-title">Report a Death</h1>
         </div>
         <div className="rad-demo-btns">
-          <button type="button" className="rad-demo-btn" onClick={() => handleDemoFill("correct")}>Correct</button>
-          <button type="button" className="rad-demo-btn" onClick={() => handleDemoFill("incorrect")}>Incorrect</button>
+          <button type="button" className="rad-demo-btn" onClick={handleDemoFill}>Fill</button>
         </div>
       </div>
     </header>
