@@ -309,34 +309,95 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
   });
 
   // GET /submissions/demo — returns pre-filled form data for demo purposes.
-  // Uses the same deterministic seed formulas as seed-supabase.ts so data matches the DB.
+  // Queries primary Supabase (CUSTOMERS + LIFE_POLICIES) for real SSN, DOB, and policy number.
+  // Falls back to deterministic in-memory formulas if DB credentials are unavailable.
   // Query param: mode=correct (default) | incorrect  (incorrect corrupts ssnLast4)
-  app.get("/submissions/demo", (req, reply) => {
+  app.get("/submissions/demo", async (req, reply) => {
     const mode = (req.query as { mode?: string }).mode ?? "correct";
-    const i = Math.floor(Math.random() * 25) + 1; // pick a random customer 1–25
-    const customer = store.customers[i - 1];
-    if (!customer) return reply.code(500).send({ message: "Customer not found" });
-
     const pad = (n: number, len: number) => String(n).padStart(len, "0");
-
-    const dobYear  = 1961 + ((i * 13) % 41);
-    const dobMonth = ((i * 7)  % 12) + 1;
-    const dobDay   = ((i * 11) % 28) + 1;
-
-    const ssnSerial     = 1000 + ((i * 331) % 9000);
-    const ssnCorrect    = pad(ssnSerial, 4);
-    const ssnWrong      = pad(((ssnSerial - 1000 + 1111) % 9000) + 1000, 4);
-
-    const BENE_FIRST = ["Sarah","Michael","Jennifer","David","Lisa","Robert","Michelle","James","Patricia","William"];
-    const BENE_RELS  = ["SPOUSE","CHILD","PARENT","SIBLING","ESTATE"];
     const REL_MAP: Record<string, string> = {
       SPOUSE: "Spouse", CHILD: "Child", PARENT: "Family Member",
       SIBLING: "Sibling", ESTATE: "Executor of the Estate",
     };
 
-    const custLastName = customer.displayName.split(" ")[1] ?? "";
-    const beneFirst    = BENE_FIRST[i % 10]!;
-    const beneRel      = BENE_RELS[i % 5]!;
+    const srcUrl = process.env.SUPABASE_URL;
+    const srcKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
+
+    if (srcUrl && srcKey) {
+      const primary = createClient(srcUrl, srcKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      // 58 customers are seeded in the primary DB (CUST-00001 … CUST-00058)
+      const i = Math.floor(Math.random() * 58) + 1;
+      const customerId = `CUST-${pad(i, 5)}`;
+
+      const [{ data: cust, error: custErr }, { data: pol, error: polErr }] = await Promise.all([
+        primary
+          .from("CUSTOMERS")
+          .select("display_name,ssn,date_of_birth,primary_phone,address_line1,city,state_prov_cd,country_cd,postal_code")
+          .eq("customer_id", customerId)
+          .single(),
+        primary
+          .from("LIFE_POLICIES")
+          .select("policy_number,beneficiary_name,beneficiary_relationship")
+          .eq("customer_id", customerId)
+          .single(),
+      ]);
+
+      if (!custErr && !polErr && cust && pol) {
+        const [dobYear, dobMonthRaw, dobDayRaw] = (cust.date_of_birth as string).split("-");
+        // SSN stored as "AAA-GG-SSSS" — last 4 chars are the serial
+        const ssnLast4 = (cust.ssn as string).slice(-4);
+        const ssnSerial = parseInt(ssnLast4, 10);
+        const ssnWrong = pad(((ssnSerial - 1000 + 1111) % 9000) + 1000, 4);
+
+        const [polFirst, ...polLastParts] = (cust.display_name as string).split(" ");
+        const polLast = polLastParts.join(" ");
+        const [beneFirst, ...beneLastParts] = (pol.beneficiary_name as string).split(" ");
+        const beneLast = beneLastParts.join(" ") || polLast;
+
+        return reply.send({
+          polFirstName:  polFirst ?? "",
+          polLastName:   polLast,
+          deathMonth:    "6", deathDay: "15", deathYear: "2024",
+          dobMonth:      String(parseInt(dobMonthRaw ?? "1", 10)),
+          dobDay:        String(parseInt(dobDayRaw ?? "1", 10)),
+          dobYear:       dobYear ?? "",
+          ssnLast4:      mode === "incorrect" ? ssnWrong : ssnLast4,
+          policyNumber:  pol.policy_number as string,
+          relationship:  REL_MAP[pol.beneficiary_relationship as string] ?? "Family Member",
+          firstName:     beneFirst ?? "",
+          lastName:      beneLast,
+          email:         `${(beneFirst ?? "").toLowerCase()}.${beneLast.toLowerCase()}@example.com`,
+          phone:         cust.primary_phone as string,
+          address1:      cust.address_line1 as string,
+          city:          cust.city as string,
+          stateProvince: cust.state_prov_cd as string,
+          country:       cust.country_cd as string,
+          zipCode:       cust.postal_code as string,
+        });
+      }
+      // DB query failed — fall through to in-memory fallback
+    }
+
+    // In-memory fallback: deterministic formulas that match what was seeded into the DB
+    const i = Math.floor(Math.random() * 25) + 1;
+    const customer = store.customers[i - 1];
+    if (!customer) return reply.code(500).send({ message: "Customer not found" });
+
+    const dobYear  = 1961 + ((i * 13) % 41);
+    const dobMonth = ((i * 7)  % 12) + 1;
+    const dobDay   = ((i * 11) % 28) + 1;
+    const ssnSerial  = 1000 + ((i * 331) % 9000);
+    const ssnCorrect = pad(ssnSerial, 4);
+    const ssnWrong   = pad(((ssnSerial - 1000 + 1111) % 9000) + 1000, 4);
+
+    const BENE_FIRST_FB = ["Sarah","Michael","Jennifer","David","Lisa","Robert","Michelle","James","Patricia","William"];
+    const BENE_RELS_FB  = ["SPOUSE","CHILD","PARENT","SIBLING","ESTATE"];
+    const custLastName  = customer.displayName.split(" ")[1] ?? "";
+    const beneFirst     = BENE_FIRST_FB[i % 10]!;
+    const beneRel       = BENE_RELS_FB[i % 5]!;
 
     return reply.send({
       polFirstName:  customer.displayName.split(" ")[0] ?? "",
