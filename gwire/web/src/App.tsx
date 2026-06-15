@@ -1523,7 +1523,7 @@ function validateRAD(f: RADFormState): Record<string, string> {
 
   if (!f.email.trim()) {
     e.email = "Email address is required.";
-  } else if (!f.email.includes("@") || f.email.indexOf(".") <= f.email.indexOf("@")) {
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) {
     e.email = "Please enter a valid email address.";
   }
 
