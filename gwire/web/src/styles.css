@@ -1843,3 +1843,322 @@ body {
     justify-self: start;
   }
 }
+
+/* ================================================================
+   Report a Death page  (rad-*)
+   Standalone page — no Portal shell, Allianz-style design
+================================================================ */
+
+.rad-page {
+  min-height: 100vh;
+  background: #f4f4f4;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #333;
+}
+
+.rad-header {
+  background: #003781;
+}
+
+.rad-header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.rad-logo-text {
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.rad-page-title {
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 400;
+  margin: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+  padding-left: 2rem;
+}
+
+.rad-container {
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 0 1.5rem;
+}
+
+.rad-card {
+  background: #fff;
+  border: 1px solid #d8d8d8;
+  padding: 2rem 2.5rem;
+}
+
+.rad-intro {
+  font-size: 0.9rem;
+  color: #555;
+  margin: 0 0 1.5rem;
+}
+
+.rad-req-star {
+  color: #c00;
+}
+
+.rad-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #003781;
+  border-bottom: 2px solid #003781;
+  padding-bottom: 0.4rem;
+  margin: 1.75rem 0 1rem;
+}
+
+.rad-form-row {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 0.25rem 1rem;
+  align-items: start;
+  margin-bottom: 0.8rem;
+}
+
+.rad-label {
+  text-align: right;
+  font-size: 0.875rem;
+  color: #333;
+  padding-top: 0.48rem;
+  line-height: 1.35;
+}
+
+.rad-label--req::after {
+  content: " *";
+  color: #c00;
+}
+
+.rad-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.rad-input {
+  padding: 0.42rem 0.55rem;
+  border: 1px solid #999;
+  border-radius: 2px;
+  font-size: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  color: #333;
+  font-family: inherit;
+}
+
+.rad-input:focus {
+  outline: none;
+  border-color: #003781;
+  box-shadow: 0 0 0 2px rgba(0, 55, 129, 0.18);
+}
+
+.rad-input--err {
+  border-color: #c00;
+}
+
+.rad-input--ssn {
+  max-width: 80px;
+}
+
+.rad-input--zip {
+  max-width: 140px;
+}
+
+.rad-input--phone {
+  max-width: 190px;
+  flex-shrink: 0;
+}
+
+.rad-input--ext {
+  max-width: 70px;
+}
+
+.rad-select {
+  padding: 0.42rem 0.55rem;
+  border: 1px solid #999;
+  border-radius: 2px;
+  font-size: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rad-select:focus {
+  outline: none;
+  border-color: #003781;
+  box-shadow: 0 0 0 2px rgba(0, 55, 129, 0.18);
+}
+
+.rad-select--month { width: 140px; flex-shrink: 0; }
+.rad-select--day   { width: 76px;  flex-shrink: 0; }
+.rad-select--year  { width: 92px;  flex-shrink: 0; }
+
+.rad-date-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rad-phone-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.rad-ext-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rad-ext-label {
+  font-size: 0.875rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+.rad-textarea {
+  padding: 0.42rem 0.55rem;
+  border: 1px solid #999;
+  border-radius: 2px;
+  font-size: 0.875rem;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: inherit;
+  color: #333;
+  background: #fff;
+}
+
+.rad-textarea:focus {
+  outline: none;
+  border-color: #003781;
+  box-shadow: 0 0 0 2px rgba(0, 55, 129, 0.18);
+}
+
+.rad-error {
+  font-size: 0.78rem;
+  color: #c00;
+  margin-top: 0.1rem;
+}
+
+.rad-add-policy {
+  background: none;
+  border: none;
+  color: #003781;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  text-decoration: underline;
+  text-align: left;
+  margin-top: 0.35rem;
+  font-family: inherit;
+}
+
+.rad-add-policy:hover {
+  color: #002060;
+}
+
+.rad-server-error {
+  background: #fff5f5;
+  border: 1px solid #c00;
+  color: #c00;
+  padding: 0.7rem 1rem;
+  border-radius: 2px;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.rad-submit-row {
+  margin-top: 1.75rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rad-btn-continue {
+  background: #003781;
+  color: #fff;
+  border: none;
+  padding: 0.65rem 2.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.rad-btn-continue:hover:not(:disabled) {
+  background: #002560;
+}
+
+.rad-btn-continue:disabled {
+  background: #7a9cc6;
+  cursor: not-allowed;
+}
+
+.rad-success-card {
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.rad-success-heading {
+  font-size: 1.5rem;
+  color: #003781;
+  margin-bottom: 1rem;
+}
+
+.rad-success-msg {
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 0.75rem;
+}
+
+.rad-success-id {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+@media (max-width: 640px) {
+  .rad-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rad-label {
+    text-align: left;
+    padding-top: 0;
+    font-weight: 600;
+  }
+
+  .rad-card {
+    padding: 1.25rem 1rem;
+  }
+
+  .rad-header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .rad-page-title {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.4);
+    padding-top: 0.5rem;
+    width: 100%;
+  }
+}

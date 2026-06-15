@@ -7,7 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && node scripts/copy-spec.mjs",
     "start": "node dist/index.js",
-    "test": "node --import tsx --test src/app.test.ts src/domain/seed.test.ts"
+    "test": "node --import tsx --test src/app.test.ts src/domain/seed.test.ts",
+    "seed-supabase": "tsx --env-file=../../.env scripts/seed-supabase.ts",
+    "seed-external-submissions": "tsx --env-file=../../.env scripts/seed-external-submissions.ts"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",

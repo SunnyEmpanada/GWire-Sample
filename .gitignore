@@ -6,3 +6,4 @@ node_modules/
 dist/
 gwire/web/dist/
 gwire/server/dist/
+.venv/

@@ -19,6 +19,7 @@ const apiPrefixes = [
   "providers",
   "openWork",
   "recentlyViewed",
+  "submissions",
 ];
 
 export default defineConfig({

@@ -2,6 +2,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
+import { createClient } from "@supabase/supabase-js";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import type { OpenAPI } from "openapi-types";
@@ -220,6 +221,90 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
     }
     store.riskRanks.clear();
     return reply.code(200).send({ cleared });
+  });
+
+  // POST /submissions — record a death notification in the external Supabase project.
+  // Credentials (EXT_SUPABASE_URL / EXT_SUPABASE_SERVICE_ROLE_KEY) are server-side only.
+  app.post("/submissions", async (req, reply) => {
+    const extUrl = process.env.EXT_SUPABASE_URL;
+    const extKey = process.env.EXT_SUPABASE_SERVICE_ROLE_KEY;
+    if (!extUrl || !extKey) {
+      return reply.code(503).send({ message: "External submissions not configured" });
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const required = [
+      "policyholder_first_name", "policyholder_last_name",
+      "date_of_death", "policyholder_date_of_birth", "policyholder_ssn_last4",
+      "relationship_to_deceased", "first_name", "last_name",
+      "email", "phone_number", "address_1", "city", "country",
+    ];
+    for (const field of required) {
+      if (!body[field] || typeof body[field] !== "string" || !(body[field] as string).trim()) {
+        return reply.code(400).send({ message: `${field} is required` });
+      }
+    }
+
+    const extClient = createClient(extUrl, extKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { count, error: countError } = await extClient
+      .from("EXTERNAL_SUBMISSIONS")
+      .select("*", { count: "exact", head: true });
+
+    if (countError) {
+      return reply.code(503).send({
+        message: "Could not generate submission ID",
+        detail: countError.message,
+      });
+    }
+
+    const submissionId = `SUB-${String((count ?? 0) + 1).padStart(5, "0")}`;
+
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+    const row: Record<string, string> = {
+      submission_id: submissionId,
+      submitted_at: new Date().toISOString(),
+      policyholder_first_name: (body.policyholder_first_name as string).trim(),
+      policyholder_last_name: (body.policyholder_last_name as string).trim(),
+      date_of_death: body.date_of_death as string,
+      policyholder_date_of_birth: body.policyholder_date_of_birth as string,
+      policyholder_ssn_last4: (body.policyholder_ssn_last4 as string).trim(),
+      relationship_to_deceased: body.relationship_to_deceased as string,
+      first_name: (body.first_name as string).trim(),
+      last_name: (body.last_name as string).trim(),
+      email: (body.email as string).trim(),
+      phone_number: (body.phone_number as string).trim(),
+      address_1: (body.address_1 as string).trim(),
+      city: (body.city as string).trim(),
+      country: body.country as string,
+    };
+
+    const optional: Record<string, string | undefined> = {
+      policy_contract_number: str(body.policy_contract_number),
+      address_2: str(body.address_2),
+      address_3: str(body.address_3),
+      state_province: str(body.state_province),
+      zip_postal_code: str(body.zip_postal_code),
+      comments: str(body.comments),
+    };
+    for (const [k, v] of Object.entries(optional)) {
+      if (v) row[k] = v;
+    }
+
+    const { error: insertError } = await extClient.from("EXTERNAL_SUBMISSIONS").insert(row);
+
+    if (insertError) {
+      return reply.code(503).send({
+        message: "Could not save submission",
+        detail: insertError.message,
+      });
+    }
+
+    return reply.code(201).send({ submission_id: submissionId });
   });
 
   // DELETE /riskRankings/:category — wipe one category across all policies.

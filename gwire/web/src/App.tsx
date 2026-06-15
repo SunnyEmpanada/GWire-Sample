@@ -1377,10 +1377,558 @@ function Portal() {
   );
 }
 
+// ============================================================
+// Report a Death — standalone page, no Portal shell
+// ============================================================
+
+const RAD_MONTHS = [
+  "", "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const RAD_RELATIONSHIPS = [
+  "Allianz Rep/Agent",
+  "Child",
+  "Custodial Company Plan Administrator",
+  "Executor of the Estate",
+  "Family Member",
+  "Financial Advisor",
+  "Friend",
+  "Grandchild",
+  "Other",
+  "Pension Administrator",
+  "Policy Owner",
+  "Rep of a Charitable Organization",
+  "Sibling",
+  "Significant Other",
+  "Spouse",
+  "Trustee",
+];
+
+const RAD_COUNTRIES = [
+  { code: "US", name: "United States" },
+  { code: "CA", name: "Canada" },
+  { code: "MX", name: "Mexico" },
+  { code: "GB", name: "United Kingdom" },
+  { code: "AU", name: "Australia" },
+  { code: "DE", name: "Germany" },
+  { code: "FR", name: "France" },
+  { code: "ES", name: "Spain" },
+  { code: "IT", name: "Italy" },
+  { code: "JP", name: "Japan" },
+  { code: "CN", name: "China" },
+  { code: "IN", name: "India" },
+  { code: "BR", name: "Brazil" },
+  { code: "AR", name: "Argentina" },
+  { code: "CL", name: "Chile" },
+  { code: "CO", name: "Colombia" },
+  { code: "KR", name: "South Korea" },
+  { code: "SG", name: "Singapore" },
+  { code: "NZ", name: "New Zealand" },
+  { code: "ZA", name: "South Africa" },
+  { code: "IL", name: "Israel" },
+  { code: "AE", name: "United Arab Emirates" },
+  { code: "PH", name: "Philippines" },
+  { code: "PL", name: "Poland" },
+  { code: "NL", name: "Netherlands" },
+  { code: "SE", name: "Sweden" },
+  { code: "NO", name: "Norway" },
+  { code: "CH", name: "Switzerland" },
+  { code: "AT", name: "Austria" },
+  { code: "BE", name: "Belgium" },
+  { code: "PT", name: "Portugal" },
+  { code: "TR", name: "Turkey" },
+  { code: "Other", name: "Other" },
+];
+
+type RADFormState = {
+  polFirstName: string;
+  polLastName: string;
+  deathMonth: string;
+  deathDay: string;
+  deathYear: string;
+  dobMonth: string;
+  dobDay: string;
+  dobYear: string;
+  ssnLast4: string;
+  policyNumbers: string[];
+  relationship: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  phoneExt: string;
+  address1: string;
+  address2: string;
+  address3: string;
+  city: string;
+  stateProvince: string;
+  country: string;
+  zipCode: string;
+  comments: string;
+};
+
+const RAD_INITIAL: RADFormState = {
+  polFirstName: "", polLastName: "",
+  deathMonth: "", deathDay: "", deathYear: "",
+  dobMonth: "", dobDay: "", dobYear: "",
+  ssnLast4: "", policyNumbers: [""],
+  relationship: "",
+  firstName: "", lastName: "",
+  email: "", phone: "", phoneExt: "",
+  address1: "", address2: "", address3: "",
+  city: "", stateProvince: "", country: "", zipCode: "", comments: "",
+};
+
+function validateRAD(f: RADFormState): Record<string, string> {
+  const e: Record<string, string> = {};
+
+  if (!f.polFirstName.trim()) e.polFirstName = "First name is required.";
+  if (!f.polLastName.trim()) e.polLastName = "Last name is required.";
+
+  if (!f.deathMonth || !f.deathDay || !f.deathYear) {
+    e.dateOfDeath = "Date of death is required.";
+  } else {
+    const m = parseInt(f.deathMonth, 10), d = parseInt(f.deathDay, 10), y = parseInt(f.deathYear, 10);
+    const dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+      e.dateOfDeath = "Please enter a valid date.";
+    } else if (dt > new Date()) {
+      e.dateOfDeath = "Date of death cannot be in the future.";
+    }
+  }
+
+  if (!f.dobMonth || !f.dobDay || !f.dobYear) {
+    e.dateOfBirth = "Date of birth is required.";
+  } else {
+    const m = parseInt(f.dobMonth, 10), d = parseInt(f.dobDay, 10), y = parseInt(f.dobYear, 10);
+    const dob = new Date(y, m - 1, d);
+    if (dob.getFullYear() !== y || dob.getMonth() !== m - 1 || dob.getDate() !== d) {
+      e.dateOfBirth = "Please enter a valid date.";
+    } else if (!e.dateOfDeath) {
+      const dm = parseInt(f.deathMonth, 10), dd = parseInt(f.deathDay, 10), dy = parseInt(f.deathYear, 10);
+      if (dob >= new Date(dy, dm - 1, dd)) e.dateOfBirth = "Date of birth must be before date of death.";
+    }
+  }
+
+  if (!f.ssnLast4.trim()) {
+    e.ssnLast4 = "Last 4 digits of SSN are required.";
+  } else if (!/^\d{4}$/.test(f.ssnLast4)) {
+    e.ssnLast4 = "Please enter exactly 4 digits.";
+  }
+
+  if (!f.relationship) e.relationship = "Please select your relationship to the deceased.";
+  if (!f.firstName.trim()) e.firstName = "First name is required.";
+  if (!f.lastName.trim()) e.lastName = "Last name is required.";
+
+  if (!f.email.trim()) {
+    e.email = "Email address is required.";
+  } else if (!f.email.includes("@") || f.email.indexOf(".") <= f.email.indexOf("@")) {
+    e.email = "Please enter a valid email address.";
+  }
+
+  if (!f.phone.trim()) {
+    e.phone = "Phone number is required.";
+  } else if (f.phone.replace(/\D/g, "").length < 10) {
+    e.phone = "Please enter a valid phone number (at least 10 digits).";
+  }
+
+  if (!f.address1.trim()) e.address1 = "Address is required.";
+  if (!f.city.trim()) e.city = "City is required.";
+  if (!f.country) e.country = "Country is required.";
+
+  return e;
+}
+
+function buildRADPayload(f: RADFormState): Record<string, string> {
+  const p2 = (n: string) => n.padStart(2, "0");
+  const dod = `${f.deathYear}-${p2(f.deathMonth)}-${p2(f.deathDay)}`;
+  const dob = `${f.dobYear}-${p2(f.dobMonth)}-${p2(f.dobDay)}`;
+  const phoneNumber = f.phoneExt.trim() ? `${f.phone.trim()} x${f.phoneExt.trim()}` : f.phone.trim();
+  const firstPolicy = f.policyNumbers.find(p => p.trim()) ?? "";
+
+  const payload: Record<string, string> = {
+    policyholder_first_name: f.polFirstName.trim(),
+    policyholder_last_name: f.polLastName.trim(),
+    date_of_death: dod,
+    policyholder_date_of_birth: dob,
+    policyholder_ssn_last4: f.ssnLast4.trim(),
+    relationship_to_deceased: f.relationship,
+    first_name: f.firstName.trim(),
+    last_name: f.lastName.trim(),
+    email: f.email.trim(),
+    phone_number: phoneNumber,
+    address_1: f.address1.trim(),
+    city: f.city.trim(),
+    country: f.country,
+  };
+  if (firstPolicy) payload.policy_contract_number = firstPolicy.trim();
+  if (f.address2.trim()) payload.address_2 = f.address2.trim();
+  if (f.address3.trim()) payload.address_3 = f.address3.trim();
+  if (f.stateProvince.trim()) payload.state_province = f.stateProvince.trim();
+  if (f.zipCode.trim()) payload.zip_postal_code = f.zipCode.trim();
+  if (f.comments.trim()) payload.comments = f.comments.trim();
+  return payload;
+}
+
+function ReportADeathPage() {
+  const [form, setForm] = useState<RADFormState>(RAD_INITIAL);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [successId, setSuccessId] = useState("");
+  const [serverError, setServerError] = useState("");
+
+  const errors = validateRAD(form);
+
+  function showErr(key: string) {
+    return (submitted || !!touched[key]) && !!errors[key];
+  }
+  function touch(key: string) {
+    setTouched(prev => ({ ...prev, [key]: true }));
+  }
+  function setField(field: keyof RADFormState, value: string) {
+    setForm(prev => ({ ...prev, [field]: value }));
+  }
+  function setPolicyNum(idx: number, value: string) {
+    setForm(prev => {
+      const nums = [...prev.policyNumbers];
+      nums[idx] = value;
+      return { ...prev, policyNumbers: nums };
+    });
+  }
+
+  async function handleSubmit(ev: React.FormEvent) {
+    ev.preventDefault();
+    setSubmitted(true);
+    if (Object.keys(errors).length > 0) return;
+    setStatus("submitting");
+    setServerError("");
+    try {
+      const res = await fetch("/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildRADPayload(form)),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { message?: string };
+        setServerError(data.message ?? "Submission failed. Please try again.");
+        setStatus("error");
+        return;
+      }
+      const data = await res.json() as { submission_id?: string };
+      setSuccessId(data.submission_id ?? "");
+      setStatus("success");
+    } catch {
+      setServerError("Network error. Please check your connection and try again.");
+      setStatus("error");
+    }
+  }
+
+  const deathYears = Array.from({ length: 27 }, (_, i) => 2026 - i);
+  const dobYears = Array.from({ length: 127 }, (_, i) => 2026 - i);
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+
+  const header = (
+    <header className="rad-header">
+      <div className="rad-header-inner">
+        <span className="rad-logo-text">Allianz</span>
+        <h1 className="rad-page-title">Report a Death</h1>
+      </div>
+    </header>
+  );
+
+  if (status === "success") {
+    return (
+      <div className="rad-page">
+        {header}
+        <div className="rad-container">
+          <div className="rad-card rad-success-card">
+            <h2 className="rad-success-heading">Thank You</h2>
+            <p className="rad-success-msg">
+              Your report has been received. An Allianz representative will contact you within 5–7 business days.
+            </p>
+            <p className="rad-success-id">Submission ID: <strong>{successId}</strong></p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rad-page">
+      {header}
+      <div className="rad-container">
+        <div className="rad-card">
+          <p className="rad-intro">
+            Please complete this form to report the death of an Allianz Life policyholder.
+            Fields marked with <span className="rad-req-star">*</span> are required.
+          </p>
+
+          <form onSubmit={handleSubmit} noValidate>
+
+            <h2 className="rad-section-title">Deceased</h2>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">First name</label>
+              <div className="rad-field-group">
+                <input type="text" className={`rad-input${showErr("polFirstName") ? " rad-input--err" : ""}`}
+                  value={form.polFirstName} onChange={e => setField("polFirstName", e.target.value)}
+                  onBlur={() => touch("polFirstName")} />
+                {showErr("polFirstName") && <span className="rad-error">{errors.polFirstName}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Last name</label>
+              <div className="rad-field-group">
+                <input type="text" className={`rad-input${showErr("polLastName") ? " rad-input--err" : ""}`}
+                  value={form.polLastName} onChange={e => setField("polLastName", e.target.value)}
+                  onBlur={() => touch("polLastName")} />
+                {showErr("polLastName") && <span className="rad-error">{errors.polLastName}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Date of death</label>
+              <div className="rad-field-group">
+                <div className="rad-date-row">
+                  <select className={`rad-select rad-select--month${showErr("dateOfDeath") ? " rad-input--err" : ""}`}
+                    value={form.deathMonth} onChange={e => setField("deathMonth", e.target.value)}
+                    onBlur={() => touch("dateOfDeath")}>
+                    <option value="">Month</option>
+                    {RAD_MONTHS.slice(1).map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
+                  </select>
+                  <select className={`rad-select rad-select--day${showErr("dateOfDeath") ? " rad-input--err" : ""}`}
+                    value={form.deathDay} onChange={e => setField("deathDay", e.target.value)}
+                    onBlur={() => touch("dateOfDeath")}>
+                    <option value="">Day</option>
+                    {days.map(d => <option key={d} value={String(d)}>{d}</option>)}
+                  </select>
+                  <select className={`rad-select rad-select--year${showErr("dateOfDeath") ? " rad-input--err" : ""}`}
+                    value={form.deathYear} onChange={e => setField("deathYear", e.target.value)}
+                    onBlur={() => touch("dateOfDeath")}>
+                    <option value="">Year</option>
+                    {deathYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
+                  </select>
+                </div>
+                {showErr("dateOfDeath") && <span className="rad-error">{errors.dateOfDeath}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Date of birth</label>
+              <div className="rad-field-group">
+                <div className="rad-date-row">
+                  <select className={`rad-select rad-select--month${showErr("dateOfBirth") ? " rad-input--err" : ""}`}
+                    value={form.dobMonth} onChange={e => setField("dobMonth", e.target.value)}
+                    onBlur={() => touch("dateOfBirth")}>
+                    <option value="">Month</option>
+                    {RAD_MONTHS.slice(1).map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
+                  </select>
+                  <select className={`rad-select rad-select--day${showErr("dateOfBirth") ? " rad-input--err" : ""}`}
+                    value={form.dobDay} onChange={e => setField("dobDay", e.target.value)}
+                    onBlur={() => touch("dateOfBirth")}>
+                    <option value="">Day</option>
+                    {days.map(d => <option key={d} value={String(d)}>{d}</option>)}
+                  </select>
+                  <select className={`rad-select rad-select--year${showErr("dateOfBirth") ? " rad-input--err" : ""}`}
+                    value={form.dobYear} onChange={e => setField("dobYear", e.target.value)}
+                    onBlur={() => touch("dateOfBirth")}>
+                    <option value="">Year</option>
+                    {dobYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
+                  </select>
+                </div>
+                {showErr("dateOfBirth") && <span className="rad-error">{errors.dateOfBirth}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Last 4 digits of SSN</label>
+              <div className="rad-field-group">
+                <input type="text" inputMode="numeric" maxLength={4}
+                  className={`rad-input rad-input--ssn${showErr("ssnLast4") ? " rad-input--err" : ""}`}
+                  value={form.ssnLast4}
+                  onChange={e => setField("ssnLast4", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  onBlur={() => touch("ssnLast4")} />
+                {showErr("ssnLast4") && <span className="rad-error">{errors.ssnLast4}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label">Policy/Contract Number</label>
+              <div className="rad-field-group">
+                {form.policyNumbers.map((num, idx) => (
+                  <input key={idx} type="text" className="rad-input"
+                    style={idx > 0 ? { marginTop: "0.4rem" } : undefined}
+                    value={num} onChange={e => setPolicyNum(idx, e.target.value)}
+                    placeholder={idx === 0 ? "Optional" : ""} />
+                ))}
+                {form.policyNumbers.length < 3 && (
+                  <button type="button" className="rad-add-policy" onClick={() =>
+                    setForm(prev => ({ ...prev, policyNumbers: [...prev.policyNumbers, ""] }))}>
+                    + Add one more policy
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <h2 className="rad-section-title">About You</h2>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Your relationship to the deceased</label>
+              <div className="rad-field-group">
+                <select className={`rad-select${showErr("relationship") ? " rad-input--err" : ""}`}
+                  value={form.relationship} onChange={e => setField("relationship", e.target.value)}
+                  onBlur={() => touch("relationship")}>
+                  <option value="">Please select</option>
+                  {RAD_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                {showErr("relationship") && <span className="rad-error">{errors.relationship}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">First name</label>
+              <div className="rad-field-group">
+                <input type="text" className={`rad-input${showErr("firstName") ? " rad-input--err" : ""}`}
+                  value={form.firstName} onChange={e => setField("firstName", e.target.value)}
+                  onBlur={() => touch("firstName")} />
+                {showErr("firstName") && <span className="rad-error">{errors.firstName}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Last name</label>
+              <div className="rad-field-group">
+                <input type="text" className={`rad-input${showErr("lastName") ? " rad-input--err" : ""}`}
+                  value={form.lastName} onChange={e => setField("lastName", e.target.value)}
+                  onBlur={() => touch("lastName")} />
+                {showErr("lastName") && <span className="rad-error">{errors.lastName}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Email address</label>
+              <div className="rad-field-group">
+                <input type="email" className={`rad-input${showErr("email") ? " rad-input--err" : ""}`}
+                  value={form.email} onChange={e => setField("email", e.target.value)}
+                  onBlur={() => touch("email")} />
+                {showErr("email") && <span className="rad-error">{errors.email}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Phone number</label>
+              <div className="rad-field-group">
+                <div className="rad-phone-row">
+                  <input type="tel" placeholder="(555) 555-5555"
+                    className={`rad-input rad-input--phone${showErr("phone") ? " rad-input--err" : ""}`}
+                    value={form.phone} onChange={e => setField("phone", e.target.value)}
+                    onBlur={() => touch("phone")} />
+                  <div className="rad-ext-group">
+                    <label className="rad-ext-label">Ext.</label>
+                    <input type="text" className="rad-input rad-input--ext"
+                      value={form.phoneExt} onChange={e => setField("phoneExt", e.target.value)} />
+                  </div>
+                </div>
+                {showErr("phone") && <span className="rad-error">{errors.phone}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Address 1</label>
+              <div className="rad-field-group">
+                <input type="text" className={`rad-input${showErr("address1") ? " rad-input--err" : ""}`}
+                  value={form.address1} onChange={e => setField("address1", e.target.value)}
+                  onBlur={() => touch("address1")} />
+                {showErr("address1") && <span className="rad-error">{errors.address1}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label">Address 2</label>
+              <div className="rad-field-group">
+                <input type="text" className="rad-input"
+                  value={form.address2} onChange={e => setField("address2", e.target.value)} />
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label">Address 3</label>
+              <div className="rad-field-group">
+                <input type="text" className="rad-input"
+                  value={form.address3} onChange={e => setField("address3", e.target.value)} />
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">City</label>
+              <div className="rad-field-group">
+                <input type="text" className={`rad-input${showErr("city") ? " rad-input--err" : ""}`}
+                  value={form.city} onChange={e => setField("city", e.target.value)}
+                  onBlur={() => touch("city")} />
+                {showErr("city") && <span className="rad-error">{errors.city}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label">State/Province</label>
+              <div className="rad-field-group">
+                <input type="text" className="rad-input"
+                  value={form.stateProvince} onChange={e => setField("stateProvince", e.target.value)} />
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label rad-label--req">Country</label>
+              <div className="rad-field-group">
+                <select className={`rad-select${showErr("country") ? " rad-input--err" : ""}`}
+                  value={form.country} onChange={e => setField("country", e.target.value)}
+                  onBlur={() => touch("country")}>
+                  <option value="">Please select</option>
+                  {RAD_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+                {showErr("country") && <span className="rad-error">{errors.country}</span>}
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label">Zip/Postal Code</label>
+              <div className="rad-field-group">
+                <input type="text" className="rad-input rad-input--zip"
+                  value={form.zipCode} onChange={e => setField("zipCode", e.target.value)} />
+              </div>
+            </div>
+
+            <div className="rad-form-row">
+              <label className="rad-label">Comments</label>
+              <div className="rad-field-group">
+                <textarea className="rad-textarea" rows={4}
+                  value={form.comments} onChange={e => setField("comments", e.target.value)} />
+              </div>
+            </div>
+
+            {serverError && <div className="rad-server-error">{serverError}</div>}
+
+            <div className="rad-submit-row">
+              <button type="submit" className="rad-btn-continue" disabled={status === "submitting"}>
+                {status === "submitting" ? "Submitting…" : "Continue"}
+              </button>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/summary" replace />} />
+      <Route path="/report-a-death" element={<ReportADeathPage />} />
       <Route path="*" element={<Portal />} />
     </Routes>
   );
