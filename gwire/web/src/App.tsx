@@ -1598,6 +1598,55 @@ function ReportADeathPage() {
     });
   }
 
+  async function handleDemoFill(mode: "correct" | "incorrect") {
+    try {
+      const res = await fetch(`/submissions/demo?mode=${mode}`);
+      if (!res.ok) return;
+      const d = await res.json() as {
+        polFirstName?: string; polLastName?: string;
+        deathMonth?: string; deathDay?: string; deathYear?: string;
+        dobMonth?: string; dobDay?: string; dobYear?: string;
+        ssnLast4?: string; policyNumber?: string;
+        relationship?: string; firstName?: string; lastName?: string;
+        email?: string; phone?: string;
+        address1?: string; city?: string; stateProvince?: string;
+        country?: string; zipCode?: string;
+      };
+      setForm({
+        polFirstName:  d.polFirstName  ?? "",
+        polLastName:   d.polLastName   ?? "",
+        deathMonth:    d.deathMonth    ?? "",
+        deathDay:      d.deathDay      ?? "",
+        deathYear:     d.deathYear     ?? "",
+        dobMonth:      d.dobMonth      ?? "",
+        dobDay:        d.dobDay        ?? "",
+        dobYear:       d.dobYear       ?? "",
+        ssnLast4:      d.ssnLast4      ?? "",
+        policyNumbers: [d.policyNumber ?? ""],
+        relationship:  d.relationship  ?? "",
+        firstName:     d.firstName     ?? "",
+        lastName:      d.lastName      ?? "",
+        email:         d.email         ?? "",
+        phone:         d.phone         ?? "",
+        phoneExt:      "",
+        address1:      d.address1      ?? "",
+        address2:      "",
+        address3:      "",
+        city:          d.city          ?? "",
+        stateProvince: d.stateProvince ?? "",
+        country:       d.country       ?? "",
+        zipCode:       d.zipCode       ?? "",
+        comments:      "",
+      });
+      setTouched({});
+      setSubmitted(false);
+      setServerError("");
+      setStatus("idle");
+    } catch {
+      // silently ignore demo fill errors
+    }
+  }
+
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault();
     setSubmitted(true);
@@ -1632,8 +1681,14 @@ function ReportADeathPage() {
   const header = (
     <header className="rad-header">
       <div className="rad-header-inner">
-        <span className="rad-logo-text">Allianz</span>
-        <h1 className="rad-page-title">Report a Death</h1>
+        <div className="rad-header-left">
+          <span className="rad-logo-text">Allianz</span>
+          <h1 className="rad-page-title">Report a Death</h1>
+        </div>
+        <div className="rad-demo-btns">
+          <button type="button" className="rad-demo-btn" onClick={() => handleDemoFill("correct")}>Correct</button>
+          <button type="button" className="rad-demo-btn" onClick={() => handleDemoFill("incorrect")}>Incorrect</button>
+        </div>
       </div>
     </header>
   );

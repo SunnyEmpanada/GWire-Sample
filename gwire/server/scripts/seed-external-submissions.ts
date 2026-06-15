@@ -67,9 +67,16 @@ async function main(): Promise<void> {
 
   console.log(`Writing ${data.length} rows to target project...`);
 
+  // Attach submission_status: even-numbered submissions → approved, odd → denied.
+  // Matches the 004_submission_status.sql migration backfill pattern.
+  const rows = data.map((row, idx) => ({
+    ...row,
+    submission_status: idx % 2 === 0 ? 'denied' : 'approved',
+  }));
+
   const { error: writeError } = await tgt
     .from(TABLE)
-    .insert(data);
+    .insert(rows);
 
   if (writeError) throw new Error(`Failed to write to target: ${writeError.message}`);
 
