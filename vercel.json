@@ -7,12 +7,13 @@
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/api?t=$1"
+      "destination": "/api?t=$1",
+      "missing": [{ "type": "file" }]
     }
   ],
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "gwire/server/dist/**"
+      "includeFiles": "gwire/server/dist/**,gwire/web/dist/**"
     }
   }
 }
