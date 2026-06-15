@@ -250,9 +250,12 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { count, error: countError } = await extClient
+    const { data: lastRow, error: countError } = await extClient
       .from("EXTERNAL_SUBMISSIONS")
-      .select("*", { count: "exact", head: true });
+      .select("submission_id")
+      .order("submission_id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (countError) {
       return reply.code(503).send({
@@ -261,7 +264,10 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
       });
     }
 
-    const submissionId = `SUB-${String((count ?? 0) + 1).padStart(5, "0")}`;
+    const lastNum = lastRow
+      ? parseInt(lastRow.submission_id.replace("SUB-", ""), 10)
+      : 0;
+    const submissionId = `SUB-${String(lastNum + 1).padStart(5, "0")}`;
 
     const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
