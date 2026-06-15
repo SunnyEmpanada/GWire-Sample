@@ -7,8 +7,7 @@
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/api?t=$1",
-      "missing": [{ "type": "file" }]
+      "destination": "/api?t=$1"
     }
   ],
   "functions": {
