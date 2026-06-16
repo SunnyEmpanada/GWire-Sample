@@ -274,7 +274,7 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
     const row: Record<string, string> = {
       submission_id: submissionId,
       submitted_at: new Date().toISOString(),
-      submission_status: "in_review",
+      submission_status: "requested",
       policyholder_first_name: (body.policyholder_first_name as string).trim(),
       policyholder_last_name: (body.policyholder_last_name as string).trim(),
       date_of_death: body.date_of_death as string,
