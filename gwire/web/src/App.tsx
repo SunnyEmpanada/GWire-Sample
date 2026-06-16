@@ -1703,6 +1703,13 @@ function ReportADeathPage() {
               Your report has been received. An Allianz representative will contact you within 5–7 business days.
             </p>
             <p className="rad-success-id">Submission ID: <strong>{successId}</strong></p>
+            <button
+              type="button"
+              className="rad-return-btn"
+              onClick={() => { setStatus("idle"); setSuccessId(""); setForm(RAD_INITIAL); setTouched({}); setSubmitted(false); setServerError(""); }}
+            >
+              Return to Form
+            </button>
           </div>
         </div>
       </div>

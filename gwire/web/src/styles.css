@@ -2163,6 +2163,24 @@ body {
 .rad-success-id {
   font-size: 0.9rem;
   color: #555;
+  margin-bottom: 2rem;
+}
+
+.rad-return-btn {
+  background: #003781;
+  color: #fff;
+  border: none;
+  padding: 0.65rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.rad-return-btn:hover {
+  background: #002560;
 }
 
 @media (max-width: 640px) {
