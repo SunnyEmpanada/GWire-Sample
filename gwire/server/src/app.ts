@@ -21,6 +21,16 @@ import {
   createRiskPersistenceFromEnv,
   type RiskPersistence,
 } from "./domain/extensions/riskPersistence.js";
+import {
+  buildDemoFillResponse,
+  customerSeedIndex,
+  demoFillCandidateIds,
+  isPolicyholderSubmitted,
+  loadPrimaryDemoFillRecords,
+  loadPrimaryLifeCustomerIds,
+  loadSubmittedPolicyholderKeys,
+  shuffledIds,
+} from "./domain/submissionDemoFill.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -315,14 +325,37 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
   });
 
   // GET /submissions/demo — returns pre-filled form data for demo purposes.
-  // Queries primary Supabase (CUSTOMERS + LIFE_POLICIES) for real SSN, DOB, and policy number.
-  // Falls back to deterministic in-memory formulas if DB credentials are unavailable.
+  // Pool: any in-memory customer that also has a LIFE_POLICIES row in the primary DB.
+  // Skips policyholders that already exist in the secondary EXTERNAL_SUBMISSIONS table.
+  // Falls back to deterministic in-memory formulas if primary DB credentials are unavailable.
   app.get("/submissions/demo", async (_req, reply) => {
     const pad = (n: number, len: number) => String(n).padStart(len, "0");
     const REL_MAP: Record<string, string> = {
       SPOUSE: "Spouse", CHILD: "Child", PARENT: "Family Member",
       SIBLING: "Sibling", ESTATE: "Executor of the Estate",
     };
+    const BENE_FIRST_FB = ["Sarah","Michael","Jennifer","David","Lisa","Robert","Michelle","James","Patricia","William"];
+    const BENE_RELS_FB  = ["SPOUSE","CHILD","PARENT","SIBLING","ESTATE"];
+
+    const inMemoryCustomerIds = store.customers.map((c) => c.systemId);
+
+    const extUrl = process.env.EXT_SUPABASE_URL;
+    const extKey = process.env.EXT_SUPABASE_SERVICE_ROLE_KEY;
+    let submitted: Set<string> | null = null;
+
+    if (extUrl && extKey) {
+      const extClient = createClient(extUrl, extKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      try {
+        submitted = await loadSubmittedPolicyholderKeys(extClient);
+      } catch (error) {
+        return reply.code(503).send({
+          message: "Could not check existing submissions",
+          detail: error instanceof Error ? error.message : "unknown error",
+        });
+      }
+    }
 
     const srcUrl = process.env.SUPABASE_URL;
     const srcKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
@@ -332,89 +365,87 @@ export async function createApp(options: { riskPersistence?: RiskPersistence } =
         auth: { persistSession: false, autoRefreshToken: false },
       });
 
-      // 58 customers are seeded in the primary DB (CUST-00001 … CUST-00058)
-      const i = Math.floor(Math.random() * 58) + 1;
-      const customerId = `CUST-${pad(i, 5)}`;
+      try {
+        const primaryLifeCustomerIds = await loadPrimaryLifeCustomerIds(primary);
+        const candidateIds = demoFillCandidateIds(inMemoryCustomerIds, primaryLifeCustomerIds);
+        const records = await loadPrimaryDemoFillRecords(primary, candidateIds);
 
-      const [{ data: cust, error: custErr }, { data: pol, error: polErr }] = await Promise.all([
-        primary
-          .from("CUSTOMERS")
-          .select("display_name,ssn,date_of_birth,primary_phone,address_line1,city,state_prov_cd,country_cd,postal_code")
-          .eq("customer_id", customerId)
-          .single(),
-        primary
-          .from("LIFE_POLICIES")
-          .select("policy_number,beneficiary_name,beneficiary_relationship")
-          .eq("customer_id", customerId)
-          .single(),
-      ]);
+        for (const customerId of candidateIds) {
+          const record = records.get(customerId);
+          if (!record) continue;
 
-      if (!custErr && !polErr && cust && pol) {
-        const [dobYear, dobMonthRaw, dobDayRaw] = (cust.date_of_birth as string).split("-");
-        const ssnLast4 = (cust.ssn as string).slice(-4);
+          const ssnLast4 = record.ssn.slice(-4);
+          if (
+            submitted &&
+            isPolicyholderSubmitted(
+              submitted,
+              ssnLast4,
+              record.dateOfBirth,
+              record.policyNumber
+            )
+          ) {
+            continue;
+          }
 
-        const [polFirst, ...polLastParts] = (cust.display_name as string).split(" ");
-        const polLast = polLastParts.join(" ");
-        const [beneFirst, ...beneLastParts] = (pol.beneficiary_name as string).split(" ");
-        const beneLast = beneLastParts.join(" ") || polLast;
+          return reply.send(buildDemoFillResponse(record, REL_MAP));
+        }
 
-        return reply.send({
-          polFirstName:  polFirst ?? "",
-          polLastName:   polLast,
-          deathMonth:    "6", deathDay: "15", deathYear: "2024",
-          dobMonth:      String(parseInt(dobMonthRaw ?? "1", 10)),
-          dobDay:        String(parseInt(dobDayRaw ?? "1", 10)),
-          dobYear:       dobYear ?? "",
-          ssnLast4,
-          policyNumber:  pol.policy_number as string,
-          relationship:  REL_MAP[pol.beneficiary_relationship as string] ?? "Family Member",
-          firstName:     beneFirst ?? "",
-          lastName:      beneLast,
-          email:         `${(beneFirst ?? "").toLowerCase()}.${beneLast.toLowerCase()}@example.com`,
-          phone:         cust.primary_phone as string,
-          address1:      cust.address_line1 as string,
-          city:          cust.city as string,
-          stateProvince: cust.state_prov_cd as string,
-          country:       cust.country_cd as string,
-          zipCode:       cust.postal_code as string,
+        if (submitted && candidateIds.length > 0) {
+          return reply.code(404).send({
+            message: "All demo policyholders have already been submitted",
+          });
+        }
+      } catch (error) {
+        return reply.code(503).send({
+          message: "Could not load demo fill data from primary database",
+          detail: error instanceof Error ? error.message : "unknown error",
         });
       }
-      // DB query failed — fall through to in-memory fallback
+      // No eligible primary rows — fall through to in-memory fallback
     }
 
-    // In-memory fallback: deterministic formulas that match what was seeded into the DB
-    const i = Math.floor(Math.random() * 25) + 1;
-    const customer = store.customers[i - 1];
-    if (!customer) return reply.code(500).send({ message: "Customer not found" });
+    // In-memory fallback: same customer pool (all seeded mock customers), deterministic formulas
+    for (const customer of shuffledIds(store.customers)) {
+      const i = customerSeedIndex(customer.systemId);
+      if (!i) continue;
 
-    const dobYear  = 1961 + ((i * 13) % 41);
-    const dobMonth = ((i * 7)  % 12) + 1;
-    const dobDay   = ((i * 11) % 28) + 1;
-    const ssnLast4 = pad(1000 + ((i * 331) % 9000), 4);
+      const dobYear  = 1961 + ((i * 13) % 41);
+      const dobMonth = ((i * 7)  % 12) + 1;
+      const dobDay   = ((i * 11) % 28) + 1;
+      const dob = `${dobYear}-${pad(dobMonth, 2)}-${pad(dobDay, 2)}`;
+      const ssnLast4 = pad(1000 + ((i * 331) % 9000), 4);
+      const policyNumber = `PN-LIFE-CA-${pad(i, 5)}`;
 
-    const BENE_FIRST_FB = ["Sarah","Michael","Jennifer","David","Lisa","Robert","Michelle","James","Patricia","William"];
-    const BENE_RELS_FB  = ["SPOUSE","CHILD","PARENT","SIBLING","ESTATE"];
-    const custLastName  = customer.displayName.split(" ")[1] ?? "";
-    const beneFirst     = BENE_FIRST_FB[i % 10]!;
-    const beneRel       = BENE_RELS_FB[i % 5]!;
+      if (submitted && isPolicyholderSubmitted(submitted, ssnLast4, dob, policyNumber)) {
+        continue;
+      }
 
-    return reply.send({
-      polFirstName:  customer.displayName.split(" ")[0] ?? "",
-      polLastName:   custLastName,
-      deathMonth:    "6", deathDay: "15", deathYear: "2024",
-      dobMonth:      String(dobMonth), dobDay: String(dobDay), dobYear: String(dobYear),
-      ssnLast4,
-      policyNumber:  `PN-LIFE-CA-${pad(i, 5)}`,
-      relationship:  REL_MAP[beneRel] ?? "Family Member",
-      firstName:     beneFirst,
-      lastName:      custLastName,
-      email:         `${beneFirst.toLowerCase()}.${custLastName.toLowerCase()}@example.com`,
-      phone:         customer.primaryPhone,
-      address1:      customer.address.addressLine1,
-      city:          customer.address.city,
-      stateProvince: customer.address.stateProvCd,
-      country:       customer.address.countryCd,
-      zipCode:       customer.address.postalCode,
+      const custLastName  = customer.displayName.split(" ")[1] ?? "";
+      const beneFirst     = BENE_FIRST_FB[i % 10]!;
+      const beneRel       = BENE_RELS_FB[i % 5]!;
+
+      return reply.send({
+        polFirstName:  customer.displayName.split(" ")[0] ?? "",
+        polLastName:   custLastName,
+        deathMonth:    "6", deathDay: "15", deathYear: "2024",
+        dobMonth:      String(dobMonth), dobDay: String(dobDay), dobYear: String(dobYear),
+        ssnLast4,
+        policyNumber,
+        relationship:  REL_MAP[beneRel] ?? "Family Member",
+        firstName:     beneFirst,
+        lastName:      custLastName,
+        email:         `${beneFirst.toLowerCase()}.${custLastName.toLowerCase()}@example.com`,
+        phone:         customer.primaryPhone,
+        address1:      customer.address.addressLine1,
+        city:          customer.address.city,
+        stateProvince: customer.address.stateProvCd,
+        country:       customer.address.countryCd,
+        zipCode:       customer.address.postalCode,
+      });
+    }
+
+    return reply.code(404).send({
+      message: "All demo policyholders have already been submitted",
     });
   });
 
