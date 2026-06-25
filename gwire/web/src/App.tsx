@@ -1682,7 +1682,7 @@ function ReportADeathPage() {
     <header className="rad-header">
       <div className="rad-header-inner">
         <div className="rad-header-left">
-          <span className="rad-logo-text">Allianz</span>
+          <span className="rad-logo-text">Life Inc.</span>
           <h1 className="rad-page-title">Report a Death</h1>
         </div>
         <div className="rad-demo-btns">
