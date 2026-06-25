@@ -33,14 +33,20 @@ function readRequestBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
-function headersForInject(
+/** Strip body-related headers when Vercel forwards an empty body (common on DELETE). */
+export function headersForInject(
   headers: IncomingMessage["headers"],
   payload: Buffer | undefined
 ): Record<string, string | string[] | undefined> {
   const out = { ...headers } as Record<string, string | string[] | undefined>;
-  if (payload !== undefined && payload.length > 0) {
+  delete out["transfer-encoding"];
+  if (payload === undefined || payload.length === 0) {
+    // Vercel often sets Content-Type (e.g. application/octet-stream) on bodyless
+    // mutating requests; Fastify then runs a parser and returns 415/400.
+    delete out["content-type"];
     delete out["content-length"];
-    delete out["transfer-encoding"];
+  } else {
+    delete out["content-length"];
   }
   return out;
 }
