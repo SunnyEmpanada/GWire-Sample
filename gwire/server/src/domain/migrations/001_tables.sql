@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS "EXTERNAL_SUBMISSIONS" (
   -- Submitter (beneficiary)
   relationship_to_deceased     TEXT        NOT NULL
                                  CHECK (relationship_to_deceased IN (
-                                   'Allianz Rep/Agent',
+                                   'Life Inc. Rep/Agent',
                                    'Child',
                                    'Custodial Company Plan Administrator',
                                    'Executor of the Estate',

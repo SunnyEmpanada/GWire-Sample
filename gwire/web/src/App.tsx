@@ -1387,7 +1387,7 @@ const RAD_MONTHS = [
 ];
 
 const RAD_RELATIONSHIPS = [
-  "Allianz Rep/Agent",
+  "Life Inc. Rep/Agent",
   "Child",
   "Custodial Company Plan Administrator",
   "Executor of the Estate",
@@ -1700,7 +1700,7 @@ function ReportADeathPage() {
           <div className="rad-card rad-success-card">
             <h2 className="rad-success-heading">Thank You</h2>
             <p className="rad-success-msg">
-              Your report has been received. An Allianz representative will contact you within 5–7 business days.
+              Your report has been received. A Life Inc. representative will contact you within 5–7 business days.
             </p>
             <p className="rad-success-id">Submission ID: <strong>{successId}</strong></p>
             <button
@@ -1722,7 +1722,7 @@ function ReportADeathPage() {
       <div className="rad-container">
         <div className="rad-card">
           <p className="rad-intro">
-            Please complete this form to report the death of an Allianz Life policyholder.
+            Please complete this form to report the death of a Life Inc. policyholder.
             Fields marked with <span className="rad-req-star">*</span> are required.
           </p>
 

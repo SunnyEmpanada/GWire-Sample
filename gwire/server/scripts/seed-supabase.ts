@@ -115,7 +115,7 @@ function lifeMaturityDt(policyType: PolicyType, effectiveDt: string, dobYear: nu
 // ── External submission helpers ───────────────────────────────────────────────
 
 const RELATIONSHIPS = [
-  'Allianz Rep/Agent',
+  'Life Inc. Rep/Agent',
   'Child',
   'Custodial Company Plan Administrator',
   'Executor of the Estate',
